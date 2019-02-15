@@ -1,0 +1,17 @@
+.MAKE_VERSION:	VERSION-1.0
+cullSmooth.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h /home/ian/progs/ers1/ers1Code/ers1.h /home/ian/progs/cRecipes/cRecipes.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  cullSmooth.c
+cullStats.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h /home/ian/progs/ers1/ers1Code/ers1.h /home/ian/progs/cRecipes/cRecipes.h /home/ian/progs/cRecipes/nrutil.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  cullStats.c
+writeCullData.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  writeCullData.c
+loadCullDat.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h 
+	cc -fast -c -DPAF=0 -I/home/ian/progs  -c  loadCullDat.c
+.BUILT_LAST_MAKE_RUN:
+cullSTData.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h /home/ian/progs/ers1/ers1Code/ers1.h /home/ian/progs/cRecipes/cRecipes.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  cullSTData.c
+.BUILT_LAST_MAKE_RUN:
+cullst.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  cullst.c
+loadCullData.o:	/usr/include/stdio.h /usr/include/sys/feature_tests.h /usr/include/sys/va_list.h /usr/include/string.h /home/ian/progs/clib/standard.h /usr/include/malloc.h cullst.h /usr/include/math.h /usr/include/floatingpoint.h /usr/include/sys/ieeefp.h 
+	cc -g -c -DPAF=0 -I/home/ian/progs  -c  loadCullData.c
