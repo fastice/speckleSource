@@ -34,20 +34,19 @@ void main(int argc, char *argv[])
 	inputImageStructure inputImage;
 	int hanningFlag;
 	stateV sv1, sv2;
-    
 	readArgs(argc,argv,&parFile,&noComplex,&floatFlag, &hanningFlag);
 	trackPar.floatFlag=floatFlag;
 	trackPar.noComplex=noComplex;
 	trackPar.hanningFlag=hanningFlag;
 	if(noComplex==TRUE) {
 		fprintf(stderr, "\n\n*** noComplex flag set- amplitude matching only ***\n\n");
-	
 	}
 	fprintf(stderr,"Using: %s\n", parFile);
 	/*
 	  Parse command file
 	*/
 	parseTrack(parFile, &trackPar);
+
 	/*
 	  Parse image par files
 	*/

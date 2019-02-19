@@ -1,4 +1,4 @@
-#include "source/common/common.h"
+#include "mosaicSource/common/common.h"
 #include "fft/fftw-2.1.5/fftw/fftw.h" 
 
 #define GEODATMASK 0

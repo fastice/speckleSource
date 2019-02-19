@@ -898,7 +898,7 @@ static void initPhaseCorrect(TrackParams *trackPar)
 	c2 = 2.0 * (Re + H);
 	rc=trackPar->imageP1.rn + (double)(nSamps/2) * trackPar->imageP1.slpR;
 	thetaC = acos( (pow(rc,2.0) + c1) / (c2*rc) );
-	fprintf(stderr,"H,lat,Re,thetaC,range %f %f %f %f %f\n",H,lat*RTOD,Re,thetaC*RTOD,rc);
+	fprintf(stderr,"rn,H,lat,Re,thetaC,range %f %f %f %f %f %f %i %f\n",trackPar->imageP1.rn ,H,lat*RTOD,Re,thetaC*RTOD,rc, nSamps, trackPar->imageP1.slpR);
 
 	for(i=0; i < nSamps*OSA; i++) {
 		range=trackPar->imageP1.rn + (double)i * trackPar->imageP1.slpR/OSA;
