@@ -374,6 +374,7 @@ static void writeDatFile(TrackParams *trackPar)
 	/* Add geodats for pair */
 	geo2[0]='\0';
 	tmp=strcat(geo2,dirname(trackPar->imageFile2));
+	tmp=strcat(geo2,"/");	
 	tmp=strcat(geo2,trackPar->intGeodat);
 	fprintf(fp,"%s %s\n",trackPar->intGeodat,geo2);
 }
