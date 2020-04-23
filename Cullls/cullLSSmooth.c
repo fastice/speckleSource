@@ -19,7 +19,7 @@
     unsigned long ngood;
     double meanY,meanX;
     float nLooksEff;
- int32 nx,ny;
+    int32 nx,ny;
     nlooks[0]=1.0;
     nlooks[1]=1.0;
     nlooks[2]=1.25;
@@ -47,7 +47,6 @@
 /*                        nLooksEff += nlooks[(int)(cullPar->type[ii][jj])];*/
                         meanY += cullPar->matches.Y[ii][jj];
                         meanX += cullPar->matches.X[ii][jj];
-
                     } /* Endif cullPar.. */
 	          } /* End jj */
             } /* End ii */

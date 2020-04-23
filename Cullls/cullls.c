@@ -27,8 +27,6 @@ void  main(int argc, char *argv[])
 	CullLSParams cullPar;
 
 	readArgs(argc,argv,&cullPar);
-  
-   
 	fprintf(stderr,"cullIslandThresh %i\n",cullPar.islandThresh);
 	/* 
 	   Load data
@@ -47,7 +45,6 @@ void  main(int argc, char *argv[])
 	*/
 	fprintf(stderr,"Cull Stats\n");
 	cullLSStats(&cullPar);
-
 	/*
 	  Compute stats for data
 	*/
@@ -86,7 +83,6 @@ static void writeLSCulledOffsets(CullLSParams *cullPar)
 	/*
 	  Final count
 	*/
-
 	sigmaXAvg=0; 	sigmaYAvg=0;
 	for(i=0; i < ny; i++) {for(j=0; j < nx ; j++) {
 			if(cullPar->XS[i][j] > (NODATA+1) &&  cullPar->YS[i][j] > (NODATA+1) )  {
@@ -96,15 +92,11 @@ static void writeLSCulledOffsets(CullLSParams *cullPar)
 			}
 		}
 	}
-
 	sigmaXAvg=sqrt(sigmaXAvg/(double) nGoodPts);
 	sigmaYAvg=sqrt(sigmaYAvg/(double) nGoodPts);
-
 	/*	fprintf(stderr,"File root %s %i %i\n",matchP->outputFile, nx,ny);
 		for(i=0; i<sl; i++) file1[i]='\0';  file1=strcpy(file1,matchP->outputFile); file1=strcat(file1,".rho"); fprintf(stderr,"%s\n",file1);
 		fp=fopen(file1,"w");  fwriteBS(matches->Rho[0],sizeof(float),(size_t)(nx*ny),fp,FLOAT32FLAG); fclose(fp);*/
-
-
 	for(i=0; i<sl; i++) file1[i]='\0';  file1=strcpy(file1,cullPar->fitDat.matchFile); file1=strcat(file1,".cull.dx"); fprintf(stderr,"%s\n",file1);
 	fp=fopen(file1,"w");  fwriteBS(cullPar->XS[0],sizeof(float),(size_t)(nx*ny),fp,FLOAT32FLAG); fclose(fp);
 

@@ -26,13 +26,12 @@ void cullSTData(CullParams *cullPar)
     
 	/*    cullPar->bR=9;
 	      cullPar->bA=9; moved to readargs */
-	listR=(float *)
-		malloc(sizeof(float)*(1000+(cullPar->bR+1)*(cullPar->bA +1)));
-	listA=(float *)
-		malloc(sizeof(float)*(1000+(cullPar->bR+1)*(cullPar->bA +1)));
+	listR=(float *)	malloc(sizeof(float)*(1000+(cullPar->bR+1)*(cullPar->bA +1)));
+	listA=(float *)	malloc(sizeof(float)*(1000+(cullPar->bR+1)*(cullPar->bA +1)));
 
 	nCulled=0;
 	ngood=0;
+	fprintf(stderr,"maskFlag %d\n",cullPar->maskFlag);
 	for(i=0; i < cullPar->nA; i++) {
 		for(j=0; j < cullPar->nR; j++) {
 			if( cullPar->maskFlag == TRUE) {
@@ -40,7 +39,6 @@ void cullSTData(CullParams *cullPar)
 				maskVal=(unsigned char) cullPar->mask[i][j]  & NARROWREGION;
 				if( maskVal > 0 && cullPar->type[i][j] > 2) {
 					cullPar->offR[i][j]=-LARGEINT; cullPar->offA[i][j]=-LARGEINT; cullPar->type[i][j]=0;
-				 
 				}
 				/* added 10/12/2018 for evaluating offsets in tests - keeps only a single match type */
 				if( (cullPar->singleMT > 0) && (cullPar->type[i][j] != cullPar->singleMT)) {
