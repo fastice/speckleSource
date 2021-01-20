@@ -4,11 +4,11 @@ PROGDIR =       $(ROOTDIR)/progs/GIT
 INCLUDEPATH =	$(ROOTDIR)/progs/GIT
 BINDIR =	$(IHOME)/bin/$(MACHTYPE)
 #
-CFLAGS =	'-O3 -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS)'
+CFLAGS =	'-O3 -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS) '
 CCFLAGS =  '-O3 -m32 -D$(MACHTYPE) $(COMPILEFLAGS) '
 #-Wunused-variable'
 
-CCFLAGS1= '-O3'
+CCFLAGS1= '-O3 -march=native'
 # uncomment to debug
 #CFLAGS =	'-g -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 #CCFLAGS =  '-g -m32 -D$(MACHTYPE) $(COMPILEFLAGS)'
@@ -73,7 +73,8 @@ RECIPES  =	$(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/polint.o $(PROGDIR)/cRecipe
                 $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/svdfit.o $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/svdcmp.o \
 		$(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/svdvar.o \
                 $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/svbksb.o $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/pythag.o \
-                $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/hunt.o
+                $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/hunt.o  $(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/gaussj.o \
+		$(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/covsrt.o
 
 
 UNWRAP = $(PROGDIR)/unwrapSource/unWrap/$(MACHTYPE)-$(OSTYPE)/labelRegions.o
@@ -182,4 +183,17 @@ cullls:
 		gcc -m32 $(CCFLAGS1) \
                 Cullls/$(MACHTYPE)-$(OSTYPE)/cullls.o $(CULLLS) $(STANDARD) $(RECIPES) $(UNWRAP) $(LANDSATMOSAIC) \
                 -lm  -o $(BINDIR)/cullls
+
+TESTDIRS =	test
+testg:
+	@for i in ${TESTDIRS}; do \
+		( 	echo "<<< Descending in directory: $$i >>>"; \
+	                cd $$i; \
+			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
+			cd $(PROGDIR)/speckleSource; \
+		); done
+		gcc -m32 $(CCFLAGS1) \
+                test/$(MACHTYPE)-$(OSTYPE)/test.o $(STANDARD) $(RECIPES)  \
+                -lm  -o $(BINDIR)/testg
+
 

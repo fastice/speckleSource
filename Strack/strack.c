@@ -3,7 +3,7 @@
 #include "math.h"
 
 
-static void readArgs(int argc,char *argv[],char **parFile,int *noComplex, int *floatFlag, int *hanningFlag);
+static void readArgs(int argc,char *argv[],char **parFile,int *noComplex, int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag);
 static void usage();
 /* 
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -19,7 +19,6 @@ int DemType=0;
 double Rotation=0;
 char *Abuf1,*Abuf2,*Dbuf1,*Dbuf2;
 int llConserveMem=0; /* Kluge to maintain backwards compat 9/13/06 */
-
 float *AImageBuffer, *DImageBuffer; /* Kluge 05/31/07 to seperate image buffers */
 void *offBufSpace1,*offBufSpace2,*offBufSpace3,*offBufSpace4;
 void *lBuf1,*lBuf2,*lBuf3,*lBuf4;
@@ -32,12 +31,14 @@ void main(int argc, char *argv[])
 	int noComplex;
 	int floatFlag;
 	inputImageStructure inputImage;
-	int hanningFlag;
+	int hanningFlag, legacyFlag, gaussFlag;
 	stateV sv1, sv2;
-	readArgs(argc,argv,&parFile,&noComplex,&floatFlag, &hanningFlag);
+	readArgs(argc,argv,&parFile,&noComplex,&floatFlag, &hanningFlag, &legacyFlag, &gaussFlag);
 	trackPar.floatFlag=floatFlag;
 	trackPar.noComplex=noComplex;
 	trackPar.hanningFlag=hanningFlag;
+	trackPar.gaussFlag=gaussFlag;	
+	trackPar.legacyFlag=legacyFlag;	/* Flag to use stuff for RADARSAT - doppler etc */
 	if(noComplex==TRUE) {
 		fprintf(stderr, "\n\n*** noComplex flag set- amplitude matching only ***\n\n");
 	}
@@ -65,11 +66,18 @@ void main(int argc, char *argv[])
 	/*
 	  Get inteferogram
 	*/
-
 	if(trackPar.intFile != NULL) {
-		if(trackPar.noComplex == FALSE) getInt(&trackPar);
-		fprintf(stderr,"Lambda %f\n",trackPar.lambda);
-	} else { /* Added 8/8/2016 for baseline only correction */
+		if(trackPar.noComplex == FALSE) {
+			getInt(&trackPar);
+			fprintf(stderr,"Lambda %f\n",trackPar.lambda);
+		}
+		if(trackPar.intDat.intf == NULL) { /* If not enough mem for int, don't use, and proceed without */
+			trackPar.intFile = NULL;
+			trackPar.intFlag = FALSE;
+		}
+	}
+	/* Case with no int by design, or for lack of memory */
+	if(trackPar.intFile == NULL) { /* Added 8/8/2016 for baseline only correction */
 		if(trackPar.intGeodat==NULL ) error("getInt: Missing geodat filename");
 		/*if(trackPar.noComplex==FALSE) {*/
 			inputImage.stateFlag=TRUE;
@@ -91,7 +99,7 @@ void main(int argc, char *argv[])
 
 
 
-static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *floatFlag, int *hanningFlag)
+static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag)
 {
 	int n,i;
 	char *argString;
@@ -101,6 +109,8 @@ static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *fl
 	n = argc - 2;
 	*noComplex=FALSE;
 	*hanningFlag=TRUE;
+	*legacyFlag = FALSE;
+	*gaussFlag = FALSE;
 	for(i=1; i <= n; i++) {
 		argString = strchr(argv[i],'-');  
 		if(strstr(argString,"noComplex") != NULL)
@@ -108,7 +118,11 @@ static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *fl
 		else if(strstr(argString,"integerComplex") != NULL)
 			*floatFlag=FALSE;
 		else if(strstr(argString,"-noHanning") != NULL)
-		       *hanningFlag=FALSE;
+		       *hanningFlag = FALSE;
+		else if(strstr(argString,"-legacy") != NULL)
+		       *legacyFlag=TRUE;
+		else if(strstr(argString,"-gauss") != NULL)
+		       *gaussFlag = TRUE;		       		       
 		else usage();  
 	}
 	return;
@@ -117,5 +131,5 @@ static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *fl
  
 static void usage()
 { 
-	error("sTrack -noComplex -integerComplex -noHanning parFile \n");
+	error("sTrack -noComplex -legacy -gauss -integerComplex -noHanning parFile \n");
 }

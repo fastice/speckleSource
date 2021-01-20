@@ -11,6 +11,7 @@
 {   
     inputImageStructure inputImage;
     fftw_complex *buf;
+    size_t bufSize;
     strackComplex *inBuf;
     FILE *fp;
     int i,j;
@@ -28,11 +29,15 @@ fprintf(stderr,"get int \n");
     trackPar->intDat.nal= inputImage.nAzimuthLooks; 
     trackPar->lambda=inputImage.par.lambda;
     inBuf = (strackComplex *) malloc(trackPar->intDat.nr *sizeof(strackComplex));       
-    trackPar->intDat.intf = (fftw_complex **) 
-       malloc(trackPar->intDat.na * sizeof(fftw_complex *));
-    buf = (fftw_complex *)
-       malloc(trackPar->intDat.na * trackPar->intDat.nr *sizeof(fftw_complex));
-
+    trackPar->intDat.intf = (fftw_complex **) malloc(trackPar->intDat.na * sizeof(fftw_complex *));
+    bufSize =(long)trackPar->intDat.na * (long)trackPar->intDat.nr *(long)sizeof(fftw_complex); 
+    buf = (fftw_complex *) malloc(bufSize);
+    if(buf == NULL) {
+	fprintf(stderr,"Cannot malloc interferogram buffer, proceeding with no interferogram\n");
+	trackPar->intDat.intf = NULL;
+	return;
+    }
+    fprintf(stderr,"Reading Interferogram nr,na, bufsize %d %d %u \n", trackPar->intDat.nr,  trackPar->intDat.na, bufSize);
 
     for(i=0; i < trackPar->intDat.na; i++) 
        trackPar->intDat.intf[i]=&(buf[i*trackPar->intDat.nr]);

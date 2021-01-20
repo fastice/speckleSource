@@ -4,7 +4,7 @@
 #include "cullst.h"
 #include "math.h"
 #include "mosaicSource/common/common.h"
-
+#include "stdlib.h"
 
 static float *sWeights(int sA)
 {

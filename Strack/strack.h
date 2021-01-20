@@ -11,6 +11,10 @@ typedef struct strackComplexType {
 	strackComplexElement i;
 } strackComplex;
 
+typedef struct  {
+        float x;
+        float y;
+} xyData;
 
 typedef struct {
 	int nr;
@@ -133,7 +137,10 @@ typedef struct {
 	Offsets initOffsets;
 	double lambda;
 	int hanningFlag;
+	int legacyFlag;
+	int gaussFlag;
 	double latc;
+	int osF; /* azimuth oversample */
 } TrackParams;
 
 void parseTrack(char *parFile, TrackParams *trackPar);
