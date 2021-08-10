@@ -37,7 +37,7 @@ void cullSTData(CullParams *cullPar)
 			if( cullPar->maskFlag == TRUE) {
 				/* Added 3/25/2017 to cull mt3 in regions flagged as narrow */
 				maskVal=(unsigned char) cullPar->mask[i][j]  & NARROWREGION;
-				if( maskVal > 0 && cullPar->type[i][j] > 2) {
+				if( maskVal > 0 && cullPar->type[i][j] > 2) { /* This will get rid of wide windows in narrow regions */
 					cullPar->offR[i][j]=-LARGEINT; cullPar->offA[i][j]=-LARGEINT; cullPar->type[i][j]=0;
 				}
 				/* added 10/12/2018 for evaluating offsets in tests - keeps only a single match type */

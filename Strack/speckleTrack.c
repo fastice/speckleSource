@@ -191,7 +191,7 @@ void speckleTrack(TrackParams *trackPar)
 				if(trackPar->legacyFlag == TRUE) azComputeAzShift(j, &prevShift, trackPar, cosShift, sinShift);
 				good=FALSE;
 				if(trackPar->noComplex==FALSE && haveData==TRUE) {
-					phaseCorrectBaseline(trackPar, r1, a1); /* Phase correction with interferogram if present */
+					phaseCorrectBaseline(trackPar, r1, a1); /* Phase correction with baseline  if present */
 					phaseCorrectInt(trackPar, r1, a1);          /* Phase correction with interferogram if present */
 					/* Compute initial cross correlation */
 					if(trackPar->legacyFlag == TRUE) cmpPSNoPad(trackPar);
@@ -208,7 +208,7 @@ void speckleTrack(TrackParams *trackPar)
 			  Amplitude matching 
 			*/
 			nTries = 0; /* Counter for diff amp windows, should not exceed 2 */
-			while( good == FALSE && haveData == TRUE && maskVal > 0 && nTries < 2) {
+			while( good == FALSE && haveData == TRUE && maskVal > 0 && nTries < trackPar->maxTries) {
 				if(nTries == 0) { large = FALSE; ampWScale = 1; ampType = AMPMATCH; nAmp=&(trackPar->nAmp); cThresh = 0.07; }
 				else { large = TRUE; ampWScale = LA; ampType = AMPMATCHLARGE;  nAmp=&(trackPar->nAmpL); cThresh = 0.028;}
 				a1a = trackPar->aStart + i * trackPar->deltaA - trackPar->wAa/2 * ampWScale;
@@ -587,7 +587,7 @@ static void overSampleC(TrackParams *trackPar)
 	/* Zero pad fft for over sampling	*/
 	zeroPadFFT(psFastOver, NFAST*NOVER, NFAST * NOVER, psFast, NFAST, NFAST, 0, 0);
 	/* Inverse transform */
-	fftwnd_one(trackPar->cReverseFast,psFastOver[0],cFastOver[0]);
+	fftwnd_one(trackPar->cReverseFast, psFastOver[0], cFastOver[0]);
 }
 
 /*

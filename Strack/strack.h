@@ -141,6 +141,7 @@ typedef struct {
 	int gaussFlag;
 	double latc;
 	int osF; /* azimuth oversample */
+	int maxTries;
 } TrackParams;
 
 void parseTrack(char *parFile, TrackParams *trackPar);

@@ -3,7 +3,7 @@
 #include "math.h"
 
 
-static void readArgs(int argc,char *argv[],char **parFile,int *noComplex, int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag);
+static void readArgs(int argc,char *argv[],char **parFile,int *noComplex, int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag, int *maxTries);
 static void usage();
 /* 
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -29,16 +29,19 @@ void main(int argc, char *argv[])
 	char *parFile;
 	TrackParams trackPar;
 	int noComplex;
-	int floatFlag;
+	int floatFlag, maxTries;
 	inputImageStructure inputImage;
 	int hanningFlag, legacyFlag, gaussFlag;
 	stateV sv1, sv2;
-	readArgs(argc,argv,&parFile,&noComplex,&floatFlag, &hanningFlag, &legacyFlag, &gaussFlag);
+	readArgs(argc,argv,&parFile,&noComplex,&floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries);
 	trackPar.floatFlag=floatFlag;
 	trackPar.noComplex=noComplex;
 	trackPar.hanningFlag=hanningFlag;
 	trackPar.gaussFlag=gaussFlag;	
 	trackPar.legacyFlag=legacyFlag;	/* Flag to use stuff for RADARSAT - doppler etc */
+	trackPar.maxTries = maxTries;
+	fprintf(stderr,"maxTries = %i\n",maxTries);
+
 	if(noComplex==TRUE) {
 		fprintf(stderr, "\n\n*** noComplex flag set- amplitude matching only ***\n\n");
 	}
@@ -99,18 +102,19 @@ void main(int argc, char *argv[])
 
 
 
-static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag)
+static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag, int *maxTries)
 {
 	int n,i;
 	char *argString;
 	*floatFlag=TRUE;
-	if( argc < 2 || argc > 4 ) usage();        /* Check number of args */ 
+	if( argc < 2 || argc > 5 ) usage();        /* Check number of args */ 
 	*parFile = argv[argc-1];
 	n = argc - 2;
 	*noComplex=FALSE;
 	*hanningFlag=TRUE;
 	*legacyFlag = FALSE;
 	*gaussFlag = FALSE;
+	*maxTries = 2;
 	for(i=1; i <= n; i++) {
 		argString = strchr(argv[i],'-');  
 		if(strstr(argString,"noComplex") != NULL)
@@ -122,7 +126,9 @@ static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *fl
 		else if(strstr(argString,"-legacy") != NULL)
 		       *legacyFlag=TRUE;
 		else if(strstr(argString,"-gauss") != NULL)
-		       *gaussFlag = TRUE;		       		       
+		       *gaussFlag = TRUE;
+		else if(strstr(argString,"-singleAmp") != NULL)
+		       *maxTries = 1;
 		else usage();  
 	}
 	return;
@@ -131,5 +137,5 @@ static void readArgs(int argc,char *argv[],char **parFile,int *noComplex,int *fl
  
 static void usage()
 { 
-	error("sTrack -noComplex -legacy -gauss -integerComplex -noHanning parFile \n");
+	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning parFile \n");
 }
