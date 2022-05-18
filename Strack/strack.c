@@ -2,6 +2,7 @@
 #include "strack.h"
 #include "math.h"
 
+double SLat=-91.;
 
 static void readArgs(int argc,char *argv[],char **parFile,int *noComplex, int *floatFlag, int *hanningFlag, int *legacyFlag, int *gaussFlag, int *maxTries);
 static void usage();

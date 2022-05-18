@@ -5,7 +5,7 @@
 #include "strackw.h"
 #include "math.h"
 
-
+double SLat=-91.;
 static void readArgs(int argc,char *argv[],char **parFile, int *floatFlag);
 static void usage();
 /* 

@@ -83,7 +83,7 @@
     maxLabel=0;   
     for(i=0; i < na; i++)  
         for(j=0; j < nr; j++ ) 
-           if(labels[i][j] < 0.9*LARGEINT) maxLabel=max(maxLabel,labels[i][j]);
+           if(labels[i][j] < 0.99*LARGEINT) maxLabel=max(maxLabel,labels[i][j]);
     fprintf(stderr,"maxLabel = %i \n",maxLabel);
     holes = (hole *)malloc(sizeof(hole)*(maxLabel+1));
     for(i=1; i <= maxLabel; i++ ) { 

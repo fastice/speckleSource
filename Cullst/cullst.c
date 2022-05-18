@@ -19,7 +19,7 @@ int BufferSize=0;     /* Size of nonoverlap region of the buffer */
 int BufferLines = 0;         /* # of lines of nonoverlap in buffer */
 double RangePixelSize=0; /* Range PixelSize */
 double AzimuthPixelSize=0; /* Azimuth PixelSize */
-
+double SLat=-91.;
 
 void main(int argc, char *argv[])
 {   
