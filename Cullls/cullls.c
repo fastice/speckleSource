@@ -92,8 +92,8 @@ static void writeLSCulledOffsets(CullLSParams *cullPar)
 			}
 		}
 	}
-	sigmaXAvg=sqrt(sigmaXAvg/(double) nGoodPts);
-	sigmaYAvg=sqrt(sigmaYAvg/(double) nGoodPts);
+	sigmaXAvg=sqrt(sigmaXAvg/(double) max(nGoodPts,1));
+	sigmaYAvg=sqrt(sigmaYAvg/(double) max(nGoodPts,1));
 	/*	fprintf(stderr,"File root %s %i %i\n",matchP->outputFile, nx,ny);
 		for(i=0; i<sl; i++) file1[i]='\0';  file1=strcpy(file1,matchP->outputFile); file1=strcat(file1,".rho"); fprintf(stderr,"%s\n",file1);
 		fp=fopen(file1,"w");  fwriteBS(matches->Rho[0],sizeof(float),(size_t)(nx*ny),fp,FLOAT32FLAG); fclose(fp);*/
@@ -131,8 +131,8 @@ static void writeLSCulledOffsets(CullLSParams *cullPar)
 	fprintf(fp,"earlyImageJD = %10lf\n",cullPar->matches.jdEarly);
 	fprintf(fp,"lateImageJD = %10lf\n",cullPar->matches.jdLate);
 	fprintf(fp,"IntervalBetweenImages = %5i\n",(int)(cullPar->matches.jdLate-cullPar->matches.jdEarly));
-	fprintf(fp,"Success_rate_for_attempted_matches(%%) =  %7.2f \n",( (float)cullPar->nMatch/(float)cullPar->nAttempt)*100.);
-	fprintf(fp,"Culled_rate_for_attempted_matches(%%) =  %7.2f \n",( (float)nGoodPts/(float)cullPar->nAttempt)*100.);
+	fprintf(fp,"Success_rate_for_attempted_matches(%%) =  %7.2f \n",( (float)cullPar->nMatch/(float)max(cullPar->nAttempt,1))*100.);
+	fprintf(fp,"Culled_rate_for_attempted_matches(%%) =  %7.2f \n",( (float)nGoodPts/(float)max(cullPar->nAttempt,1))*100.);
 	fprintf(fp,"Mean_sigmaX = %11.3lf\n",sigmaXAvg);
 	fprintf(fp,"Mean_sigmaY = %11.3lf\n",sigmaYAvg);
 	fprintf(fp,"& \n");

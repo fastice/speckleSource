@@ -4,11 +4,11 @@ PROGDIR =       $(ROOTDIR)/progs/GIT
 INCLUDEPATH =	$(ROOTDIR)/progs/GIT
 BINDIR =	$(IHOME)/bin/$(MACHTYPE)
 #
-CFLAGS =	'-O3 -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS) '
+CFLAGS =	'-O3 -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS) -no-pie'
 CCFLAGS =  '-O3 -m32 -D$(MACHTYPE) $(COMPILEFLAGS) '
 #-Wunused-variable'
 
-CCFLAGS1= '-O3 -march=native'
+CCFLAGS1= -O3 -march=native
 # uncomment to debug
 #CFLAGS =	'-g -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 #CCFLAGS =  '-g -m32 -D$(MACHTYPE) $(COMPILEFLAGS)'
@@ -181,7 +181,7 @@ cullls:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR)/speckleSource; \
 		); done
-		gcc -m32 $(CCFLAGS1) \
+		gcc -m32 -no-pie $(CCFLAGS1) \
                 Cullls/$(MACHTYPE)-$(OSTYPE)/cullls.o $(CULLLS) $(STANDARD) $(RECIPES) $(UNWRAP) $(LANDSATMOSAIC) \
                 -lm  -o $(BINDIR)/cullls
 
