@@ -1,18 +1,20 @@
 #include "speckleSource/Strack/strack.h"
 #include "cRecipes/nrutil.h"
 /*
-  sl pair structure with int values
+  sl pair structure with int32_t values
 */
-typedef struct slIntPairType {
-   int s;     /* s Value */
-   int l;     /* l Value */
+typedef struct slIntPairType
+{
+   int32_t s; /* s Value */
+   int32_t l; /* l Value */
 } slIntPair;
 
 /*
    Parameters for match
 */
 
-typedef struct correlationResultType {
+typedef struct correlationResultType
+{
    slIntPair loc1;
    slIntPair loc2;
    slIntPair delta;
@@ -24,4 +26,4 @@ typedef struct correlationResultType {
    double corrPt;
    double cov[4];
    double snr;
- } correlationResult;
+} correlationResult;

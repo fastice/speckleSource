@@ -5,9 +5,4 @@ OBJS= strackw.o corrTrackFast.o
 
 .KEEP_STATE:
 all:	$(OBJS)
-
-
-
-
-
 	mv *.o $(MACHTYPE)-$(OSTYPE)
