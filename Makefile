@@ -1,20 +1,77 @@
-C =		gcc
-ROOTDIR =	/Users/ian
-PROGDIR =       $(ROOTDIR)/progs/GIT
-INCLUDEPATH =	$(ROOTDIR)/progs/GIT
-BINDIR =	$(IHOME)/bin/$(MACHTYPE)
 #
-CFLAGS =	'-O3 -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS) -no-pie'
-CCFLAGS =  '-O3 -m32 -D$(MACHTYPE) $(COMPILEFLAGS) '
+# Modify this section to point to where stuff is.
+# Current names are for a specific file system.
+# ROOTDIR: root directory for code (e.g. /Users/username directory). Likely should change for linux
+# PROGDIR: location for top source code directory (default ROOTDIR/progs/GIT64)
+# BINHOME: root directory for binaries
+# BINNAME: archetecture dependent basename for bin dir
+# BINDIR: directory for binaries (default BINHOME/bin/BINNAME) (will create if doesn't exist)
+# INCLUDEPATH: include path (default PROGDIR anything else could cause a problem)
+# Various directors can be overridden with environment variable or from make command
+# make BINHOME=/a/path/to/binhome
+#
+# Base directory for code
+USER =	$(shell id -u -n)
+#
+# Default rootdir
+ifneq ($(ROOTDIR)),)
+	ROOTDIR =	/Users/$(USER)
+endif
+$(info ROOTDIR="$(ROOTDIR)")
+# Default root for source code
+ifneq ($(PROGDIR)),)
+	PROGDIR =       $(ROOTDIR)/progs/GIT64
+endif
+$(info PROGDIR ="$(PROGDIR)")
+#
+# Default location root for compiled programs
+ifneq ($(BINHOME)),)
+	BINHOME =		~$(USER)
+endif
+$(info BINHOME="$(BINHOME)")
+#
+# For historical reasons, can compile with 32-bit memory model using MEM=-m32
+# In almost all cases, should be compiled as 64bit.
+ifneq ($(MEM),-m32)
+	BINNAME=	$(MACHTYPE)
+	FFTDIR = $(MACHTYPE)-$(OSTYPE)
+else
+	BINNAME =	i386
+	FFTDIR = i386-$(OSTYPE)
+endif
+$(info BINNAME="$(BINNAME)")
+#
+# Default binary directory
+ifneq ($(BINDIR)),)
+	BINDIR =	$(BINHOME)/bin/$(BINNAME)
+endif
+$(info BINDIR="$(BINDIR)")
+#
+# Create bin dir if it doesn't exist
+$(shell mkdir -p $(BINDIR))
+#
+#
+# Default include path
+ifneq ($(INCLUDEPATH)),)
+	INCLUDEPATH =	$(PROGDIR)
+endif
+$(info INCLUDEPATH ="$(INCLUDEPATH)")
+#
+# Compiler stuff
+#
+C =		gcc
+CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
+CCFLAGS =  '-O3 $(MEM) -D$(MACHTYPE) $(COMPILEFLAGS)'
 #-Wunused-variable'
 
-CCFLAGS1= -O3 -march=native
+CCFLAGS1= '-O3'
 # uncomment to debug
-#CFLAGS =	'-g -m32 -I$(INCLUDEPATH) $(COMPILEFLAGS)'
-#CCFLAGS =  '-g -m32 -D$(MACHTYPE) $(COMPILEFLAGS)'
+#CFLAGS =	'-g $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
+#CCFLAGS =  '-g $(MEM) -D$(MACHTYPE) $(COMPILEFLAGS)'
 #CCFLAGS1= '-g'
-
-
+#
+# ******** SHOULD NOT NEED TO MODIFY BELOW HERE *********
+#
 
 FFLAGS  =	 -g
 ERS1CODEDIR =	ers1Code
@@ -26,44 +83,42 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/earthRadiusFunction
 	                $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOldPar.o
 
 
-
-
-FFT =	$(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_1.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_2.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_3.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_4.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_5.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_6.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_7.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_8.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_9.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_10.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_11.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_12.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_13.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_14.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_15.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_16.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fn_64.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_2.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_3.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_4.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_5.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_6.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_7.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_8.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_9.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_10.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_16.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftw_64.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_1.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_2.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_3.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_4.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_5.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_6.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_7.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_8.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_9.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_10.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_11.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_12.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_13.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_14.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_15.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_16.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fni_64.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_2.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_3.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_4.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_5.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_6.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_7.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_8.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_9.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_10.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_16.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/ftwi_64.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/timer.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/config.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/planner.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/twiddle.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/fftwnd.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/wisdom.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/wisdomio.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/putils.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/rader.o  $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/malloc.o \
-        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/generic.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(MACHTYPE)-$(OSTYPE)/executor.o
+FFT =	$(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_1.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_2.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_3.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_4.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_5.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_6.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_7.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_8.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_9.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_10.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_11.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_12.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_13.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_14.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_15.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_16.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_64.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_2.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_3.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_4.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_5.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_6.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_7.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_8.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_9.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_10.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_16.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftw_64.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_1.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_2.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_3.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_4.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_5.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_6.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_7.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_8.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_9.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_10.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_11.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_12.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_13.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_14.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_15.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_16.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fni_64.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_2.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_3.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_4.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_5.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_6.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_7.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_8.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_9.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_10.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_16.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_32.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/ftwi_64.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/timer.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/config.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/planner.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/twiddle.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fftwnd.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/wisdom.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/wisdomio.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/putils.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/rader.o  $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/malloc.o \
+        $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/generic.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/executor.o
 
 RDF =		$(PROGDIR)/rdfSource/rdfRoutines/$(MACHTYPE)-$(OSTYPE)/SRTMrdf.o
 
@@ -99,7 +154,7 @@ STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
                 Strack/$(MACHTYPE)-$(OSTYPE)/parseBase.o \
                 Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
 
-STRACKDIRS =	Strack 
+STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
 
 strack:
 	@for i in ${STRACKDIRS}; do \
@@ -108,7 +163,7 @@ strack:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		gcc -m32   $(CCFLAGS1) \
+		gcc $(MEM) $(CCFLAGS1) -no-pie \
                 Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON)  \
                 -lm  -o $(BINDIR)/strack
 
@@ -121,7 +176,7 @@ STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseInitialOffsets.o \
 	 	Strack/$(MACHTYPE)-$(OSTYPE)/getMask.o
 
-STRACKWDIRS =	Strackw Strack
+STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
 
 strackw:
 	@for i in ${STRACKWDIRS}; do \
@@ -130,7 +185,7 @@ strackw:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		gcc -m32   $(CCFLAGS1) \
+		gcc $(MEM)   $(CCFLAGS1) -no-pie \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
                 -lm  -o $(BINDIR)/strackw
@@ -147,7 +202,7 @@ CULLST  =	Cullst/$(MACHTYPE)-$(OSTYPE)/loadCullData.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullIslands.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/writeCullData.o
 
-CULLSTDIRS =	Cullst
+CULLSTDIRS =	Cullst $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/unwrapSource/unWrap
 
 cullst:
 	@for i in ${CULLSTDIRS}; do \
@@ -156,7 +211,7 @@ cullst:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		gcc -m32 $(CCFLAGS1) \
+		gcc $(MEM) $(CCFLAGS1) \
                 Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(UNWRAP) \
                 -lm  -o $(BINDIR)/cullst
 
@@ -172,7 +227,7 @@ CULLLS  =	Cullls/$(MACHTYPE)-$(OSTYPE)/loadLSCullData.o \
 			Cullls/$(MACHTYPE)-$(OSTYPE)/cullLSIslands.o
 
 LANDSATMOSAIC =		$(PROGDIR)/mosaicSource/landsatMosaic/$(MACHTYPE)-$(OSTYPE)/readLSOffsets.o
-CULLLSDIRS =	Cullls
+CULLLSDIRS =	Cullls $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/unwrapSource/unWrap $(PROGDIR)/mosaicSource/landsatMosaic
 
 cullls:
 	@for i in ${CULLLSDIRS}; do \
@@ -181,7 +236,7 @@ cullls:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR)/speckleSource; \
 		); done
-		gcc -m32 -no-pie $(CCFLAGS1) \
+		gcc $(MEM) $(CCFLAGS1) \
                 Cullls/$(MACHTYPE)-$(OSTYPE)/cullls.o $(CULLLS) $(STANDARD) $(RECIPES) $(UNWRAP) $(LANDSATMOSAIC) \
                 -lm  -o $(BINDIR)/cullls
 
@@ -193,7 +248,7 @@ testg:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR)/speckleSource; \
 		); done
-		gcc -m32 $(CCFLAGS1) \
+		gcc $(MEM) $(CCFLAGS1) \
                 test/$(MACHTYPE)-$(OSTYPE)/test.o $(STANDARD) $(RECIPES)  \
                 -lm  -o $(BINDIR)/testg
 

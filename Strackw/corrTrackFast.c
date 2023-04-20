@@ -197,7 +197,7 @@ void corrTrackFast(TrackParams *trackPar)
 	if (trackPar->polyShift == FALSE)
 	{
 		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		fprintf(stderr, "%lu\n", strlen(trackPar->initOffsetsFile) + 6);
+		fprintf(stderr, "%lu\n", (unsigned long) (strlen(trackPar->initOffsetsFile) + 6));
 		tBuf[0] = '\0';
 		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
 		tBuf = strcat(tBuf, ".da");

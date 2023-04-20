@@ -3,8 +3,6 @@
 #include "mosaicSource/common/common.h"
 #include "clib/standard.h"
 #include "math.h"
-#include "geotiff/xtiffio.h"   /* for TIFF */
-#include "geotiff/geotiffio.h" /* for GeoTIFF */
 #include "landsatSource64/Lstrack/lstrack.h"
 #include "landsatSource64/Lsfit/lsfit.h"
 /* #include "ers1/landsatMosaic/landSatMosaic.h"*/
@@ -19,7 +17,7 @@ void cullLSSmooth(CullLSParams *cullPar)
     uint32_t ngood;
     double meanY, meanX;
     float nLooksEff;
-    int32 nx, ny;
+    int32_t nx, ny;
     nlooks[0] = 1.0;
     nlooks[1] = 1.0;
     nlooks[2] = 1.25;

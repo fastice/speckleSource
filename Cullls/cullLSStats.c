@@ -5,8 +5,6 @@
 #include "math.h"
 #include "stdlib.h"
 #include "cRecipes/nrutil.h"
-#include "geotiff/xtiffio.h"   /* for TIFF */
-#include "geotiff/geotiffio.h" /* for GeoTIFF */
 #include "landsatSource64/Lstrack/lstrack.h"
 #include "landsatSource64/Lsfit/lsfit.h"
 /* #include "ers1/landsatMosaic/landSatMosaic.h"*/
@@ -35,7 +33,7 @@ void cullLSStats(CullLSParams *cullPar)
 	float oX, oY;
 	double aX[5], aY[5];
 	int32_t ma;
-	int32 nx, ny;
+	int32_t nx, ny;
 	double chisq;
 	double **u, **v, *w; /* Tmp arrays use by svd */
 

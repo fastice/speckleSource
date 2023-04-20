@@ -4,8 +4,6 @@
 #include "math.h"
 #include "stdlib.h"
 #include "mosaicSource/common/common.h"
-#include "geotiff/xtiffio.h"   /* for TIFF */
-#include "geotiff/geotiffio.h" /* for GeoTIFF */
 #include "landsatSource64/Lstrack/lstrack.h"
 #include "landsatSource64/Lsfit/lsfit.h"
 #include "cullls.h"
@@ -14,18 +12,18 @@ static float selectForCull(uint32_t k, uint32_t n, float arr[]);
 
 void cullLSData(CullLSParams *cullPar)
 {
-	int32 i, j;
-	int32 i1, j1, i2, j2;
-	int32 ii, jj;
-	uint32 nGoodPts, ngood;
-	int32 nCulled, nWithData, nTotal;
-	uint32 midIndex;
+	int32_t i, j;
+	int32_t i1, j1, i2, j2;
+	int32_t ii, jj;
+	uint32_t nGoodPts, ngood;
+	int32_t nCulled, nWithData, nTotal;
+	uint32_t midIndex;
 	double diffX, diffY;
 	float medianX, medianY;
 	float *listX, *listY;
 	double maxX, maxY;
-	int32 slowFlag;
-	int32 nx, ny;
+	int32_t slowFlag;
+	int32_t nx, ny;
 	fprintf(stderr, "Entering cullLSData\n");
 	listX = (float *)
 		malloc(sizeof(float) * (1000 + (cullPar->bR + 1) * (cullPar->bA + 1)));

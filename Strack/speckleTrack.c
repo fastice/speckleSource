@@ -149,7 +149,7 @@ void speckleTrack(TrackParams *trackPar)
 		trackPar->osF = OSA;
 	else
 		trackPar->osF = 1; /* Adjust cmpx over sample depending on mode */
-	fprintf(stderr, "%li %li \n", sizeof(fftw_real), sizeof(fftw_complex));
+	fprintf(stderr, "%li %li \n", (long) sizeof(fftw_real), (long) sizeof(fftw_complex));
 	/*     Malloc space 	*/
 	mallocSpace(trackPar);
 	/* OPen files */
@@ -1713,7 +1713,7 @@ static void trackParInits(TrackParams *trackPar)
 	if (trackPar->polyShift == FALSE)
 	{
 		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		fprintf(stderr, "%li\n", strlen(trackPar->initOffsetsFile) + 6);
+		fprintf(stderr, "%lu\n", (unsigned long) (strlen(trackPar->initOffsetsFile) + 6));
 		tBuf[0] = '\0';
 		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
 		tBuf = strcat(tBuf, ".da");

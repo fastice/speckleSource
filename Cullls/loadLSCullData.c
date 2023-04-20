@@ -3,17 +3,15 @@
 #include "clib/standard.h"
 #include "math.h"
 #include <stdlib.h>
-#include "geotiff/xtiffio.h"   /* for TIFF */
-#include "geotiff/geotiffio.h" /* for GeoTIFF */
 #include "landsatSource64/Lstrack/lstrack.h"
 #include "landsatSource64/Lsfit/lsfit.h"
 #include "cullls.h"
-static char **mallocByteMat(int32 nA, int32 nR);
-static float **mallocFloatMat(int32 nA, int32 nR);
+static char **mallocByteMat(int32_t nA, int32_t nR);
+static float **mallocFloatMat(int32_t nA, int32_t nR);
 
 void loadLSCullData(CullLSParams *cullPar)
 {
-	int32 nx, ny;
+	int32_t nx, ny;
 	/*
 	  Read offsets
 	 */
@@ -39,7 +37,7 @@ malloc space for sigma buffers
 	*/
 }
 
-static char **mallocByteMat(int32 nA, int32 nR)
+static char **mallocByteMat(int32_t nA, int32_t nR)
 {
 	char *tmp, **tmp1;
 
@@ -51,7 +49,7 @@ static char **mallocByteMat(int32 nA, int32 nR)
 	return tmp1;
 }
 
-static float **mallocFloatMat(int32 nA, int32 nR)
+static float **mallocFloatMat(int32_t nA, int32_t nR)
 {
 	float *tmp, **tmp1;
 	int32_t i;

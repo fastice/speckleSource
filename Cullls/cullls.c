@@ -3,8 +3,6 @@
 #include "clib/standard.h"
 #include "math.h"
 #include <stdlib.h>
-#include "geotiff/xtiffio.h"   /* for TIFF */
-#include "geotiff/geotiffio.h" /* for GeoTIFF */
 #include "landsatSource64/Lstrack/lstrack.h"
 #include "landsatSource64/Lsfit/lsfit.h"
 #include "cullls.h"
@@ -67,13 +65,13 @@ int main(int argc, char *argv[])
 *******************************************************************************************/
 static void writeLSCulledOffsets(CullLSParams *cullPar)
 {
-	uint32 i, j;
+	uint32_t i, j;
 	FILE *fp;
 	char *file1;
 	size_t sl;
-	int32 nx, ny;
-	extern int32 nMatch, nAttempt, nTotal;
-	int32 nGoodPts;
+	int32_t nx, ny;
+	extern int32_t nMatch, nAttempt, nTotal;
+	int32_t nGoodPts;
 	double sigmaXAvg, sigmaYAvg;
 	sl = 1500;
 	file1 = (char *)malloc(sl);
@@ -145,7 +143,7 @@ static void writeLSCulledOffsets(CullLSParams *cullPar)
 	file1 = strcat(file1, ".cull.mtype");
 	fprintf(stderr, "%s\n", file1);
 	fp = fopen(file1, "w");
-	fwrite(cullPar->matches.type[0], sizeof(uint8), (size_t)(nx * ny), fp);
+	fwrite(cullPar->matches.type[0], sizeof(uint8_t), (size_t)(nx * ny), fp);
 	fclose(fp);
 
 	for (i = 0; i < sl; i++)

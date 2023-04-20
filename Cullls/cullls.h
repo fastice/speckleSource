@@ -16,16 +16,16 @@ typedef struct
     char *outFileD;   /* Header (.dat) file */
     char *outFileSX;  /* standard deviations */
     char *outFileSY;
-    int32 bR; /* Size of window used for checking */
-    int32 bA;
+    int32_t bR; /* Size of window used for checking */
+    int32_t bA;
     int32_t nGood;
     float maxX, maxY;
     int32_t sX; /* smoothing window size */
     int32_t sY;
     int32_t islandThresh;
-    int32 nAttempt;
-    int32 nAfterCull;
-    int32 nMatch;
+    int32_t nAttempt;
+    int32_t nAfterCull;
+    int32_t nMatch;
 } CullLSParams;
 
 void loadLSCullData(CullLSParams *cullPar);
