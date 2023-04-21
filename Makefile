@@ -66,7 +66,7 @@ CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS)'
 CCFLAGS1= '-O3'
 # this depends on fft compilation. Linux needs, darwin not.  Manually set or unset if this
 ifneq ($(OSTYPE),darwin)
-	NOPIE =	-no-pie111
+	NOPIE =	-no-pie
 endif
 $(info NOPIE ="$(NOPIE)")
 # uncomment to debug
