@@ -63,8 +63,12 @@ C =		gcc
 CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS)'
 #-Wunused-variable'
-
 CCFLAGS1= '-O3'
+# this depends on fft compilation. Linux needs, darwin not.  Manually set or unset if this
+ifneq ($(OSTYPE),darwin)
+	NOPIE =	-no-pie111
+endif
+$(info NOPIE ="$(NOPIE)")
 # uncomment to debug
 #CFLAGS =	'-g $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 #CCFLAGS =  '-g $(MEM) -D$(MACHTYPE) $(COMPILEFLAGS)'
@@ -163,7 +167,7 @@ strack:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		gcc $(MEM) $(CCFLAGS1) -no-pie \
+		gcc $(MEM) $(CCFLAGS1) $(NOPIE) \
                 Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON)  \
                 -lm  -o $(BINDIR)/strack
 
@@ -185,7 +189,7 @@ strackw:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		gcc $(MEM)   $(CCFLAGS1) -no-pie \
+		gcc $(MEM)   $(CCFLAGS1) $(NOPIE) \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
                 -lm  -o $(BINDIR)/strackw
