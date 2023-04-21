@@ -14,7 +14,7 @@
 USER =	$(shell id -u -n)
 #
 # Default rootdir
-ifneq ($(ROOTDIR))
+ifneq ($(ROOTDIR)),)
 	ROOTDIR =	/Users/$(USER)
 endif
 $(info ROOTDIR="$(ROOTDIR)")
