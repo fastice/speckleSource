@@ -41,6 +41,7 @@ else
 endif
 $(info BINNAME="$(BINNAME)")
 $(info FFTDIR="$(FFTDIR)")
+$(info MACHTYPE="$(MACHTYPE)")
 #
 # Default binary directory
 ifneq ($(BINDIR)),)
