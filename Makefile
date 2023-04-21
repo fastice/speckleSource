@@ -40,6 +40,7 @@ else
 	FFTDIR = i386-$(OSTYPE)
 endif
 $(info BINNAME="$(BINNAME)")
+$(info FFTDIR="$(FFTDIR)")
 #
 # Default binary directory
 ifneq ($(BINDIR)),)
