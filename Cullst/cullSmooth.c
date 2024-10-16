@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "clib/standard.h"
+#include "gdalIO/gdalIO/grimpgdal.h"
 #include "cullst.h"
 #include "math.h"
 #include "mosaicSource/common/common.h"
@@ -12,14 +13,15 @@ static float *sWeights(int32_t sA)
 	float w2;  /* half width as float */
 	float *wA; /* Weights */
 	w2 = (float)sA / 2.0 - 0.01;
-	wA = (float *)malloc(sizeof(float) * sA / 2 + 1);
+	wA = (float *)malloc(sizeof(float) * sA + 1);
+	wA += sA/2;
 	for (m = -sA / 2; m <= sA / 2; m++)
 	{
 		if (m < -w2 || m > w2)
 			wA[m] = 0.5;
 		else
 			wA[m] = 1.0;
-		fprintf(stderr, " weights %d %f\n", m, wA[m]);
+		// fprintf(stderr, " weights %d %f sA %i\n", m, wA[m], sA);
 	}
 	return wA;
 }
@@ -68,6 +70,7 @@ void cullSmooth(CullParams *cullPar)
 			{
 				for (jj = j1, jw = jwStart; jj <= j2; jj++, jw++)
 				{
+					if(jj >= cullPar->nR || ii >= cullPar->nA || jj < 0 || ii <0) fprintf(stderr, "%i %i\n",ii,jj);
 					/* Valid data, so add */
 					if (cullPar->offR[ii][jj] > (1 - LARGEINT) && cullPar->offA[ii][jj] > (1 - LARGEINT))
 					{

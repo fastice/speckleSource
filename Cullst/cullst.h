@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 
 typedef struct
 {
@@ -26,6 +28,8 @@ typedef struct
     char *outFileC;  /* Correlation ouput file */
     char *outFileT;  /* Match type ouput file */
     char *outFileD;  /* Header (.dat) file */
+    char *outFileVRT;  /* Header (.vrt) file */
+     char *outFileVRTMT;  /* Header (.vrt) file */
     char *outFileSR; /* standard deviations */
     char *outFileSA;
     char *inFileR;    /* Range input file */
@@ -33,9 +37,14 @@ typedef struct
     char *inFileC;    /* Correlation input file */
     char *inFileT;    /* Match type input file */
     char *inFileD;    /* Header (.dat) file */
+    char *inFileVRT;    /* Header (.dat) file */
+    char *inFileVRTMT;    /* Header (.dat) file */
     char *inFileSimR; /* Range input file */
     char *inFileSimA; /* Azimuth input file */
     char *inFileSimD; /* Header (.dat) file */
+    char *inFileSimVRT; /* Header (.dat) file */
+    char *geo1;
+    char *geo2;
     int32_t bR;       /* Size of window used for checking */
     int32_t bA;
     int32_t nGood;
@@ -44,6 +53,9 @@ typedef struct
     int32_t sA;
     int32_t islandThresh;
     int32_t ignoreOffsets;
+    dictNode *metaData;
+    dictNode *metaDataMT;
+    float corrThresh;
 } CullParams;
 void cullSmooth(CullParams *cullPar);
 void writeCullData(CullParams *cullPar);

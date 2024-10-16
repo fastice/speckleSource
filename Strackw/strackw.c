@@ -6,7 +6,7 @@
 #include "math.h"
 
 double SLat = -91.;
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag);
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -33,10 +33,12 @@ int main(int argc, char *argv[])
 	int32_t noComplex;
 	int32_t floatFlag;
 	stateV sv1, sv2;
-
-	readArgs(argc, argv, &parFile, &floatFlag);
+	int32_t byteOrder;
+	GDALAllRegister();
+	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder);
 	trackPar.floatFlag = floatFlag;
 	trackPar.noComplex = TRUE;
+	trackPar.byteOrder = byteOrder;
 	fprintf(stderr, "Using: %s\n", parFile);
 	/*
 	  Parse command file
@@ -48,28 +50,31 @@ int main(int argc, char *argv[])
 	*/
 	readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
 	readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+	fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	/*
 	   Parse initial offsets
 	*/
 	parseInitialOffsets(&trackPar);
+	fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	/*
 	  Get mask
 	*/
 	if (trackPar.maskFile != NULL)
 		getMask(&trackPar);
-
 	/*
 	  Do matching
 	*/
+fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	corrTrackFast(&trackPar);
 }
 
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag)
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder)
 {
 	int32_t n, i;
 	char *argString;
 	*floatFlag = TRUE;
-	if (argc < 2 || argc > 3)
+	*byteOrder = MSB;
+	if (argc < 2 || argc > 4)
 		usage(); /* Check number of args */
 	*parFile = argv[argc - 1];
 	n = argc - 2;
@@ -78,6 +83,8 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag)
 		argString = strchr(argv[i], '-');
 		if (strstr(argString, "integerComplex") != NULL)
 			*floatFlag = FALSE;
+		else if (strstr(argString, "-LSB") != NULL)
+			*byteOrder = LSB;
 		else
 			usage();
 	}
@@ -86,5 +93,5 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag)
 
 static void usage()
 {
-	error("sTrack -integerComplex parFile \n");
+	error("sTrack -integerComplex -LSB parFile \n");
 }

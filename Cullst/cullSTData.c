@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "clib/standard.h"
+#include "gdalIO/gdalIO/grimpgdal.h"
 #include "cullst.h"
 #include "math.h"
 #include "stdlib.h"
@@ -34,12 +35,19 @@ void cullSTData(CullParams *cullPar)
 	{
 		for (j = 0; j < cullPar->nR; j++)
 		{
+			if(cullPar->corr[i][j] < cullPar->corrThresh)
+			{
+				cullPar->offR[i][j] = -LARGEINT;
+				cullPar->offA[i][j] = -LARGEINT;
+				cullPar->type[i][j] = 0;
+			}
 			if (cullPar->maskFlag == TRUE)
 			{
 				/* Added 3/25/2017 to cull mt3 in regions flagged as narrow */
 				maskVal = (unsigned char)cullPar->mask[i][j] & NARROWREGION;
-				if (maskVal > 0 && cullPar->type[i][j] > 2)
+				if ( (maskVal > 0 && cullPar->type[i][j] > 2) )
 				{ /* This will get rid of wide windows in narrow regions */
+				
 					cullPar->offR[i][j] = -LARGEINT;
 					cullPar->offA[i][j] = -LARGEINT;
 					cullPar->type[i][j] = 0;
@@ -64,13 +72,15 @@ void cullSTData(CullParams *cullPar)
 	nCulled = 0;
 	for (i = 0; i < cullPar->nA; i++)
 	{
+		// Define box limits, without going out of image
 		i1 = max(0, i - cullPar->bA / 2);
 		i2 = min(cullPar->nA - 1, i + cullPar->bA / 2);
 		for (j = 0; j < cullPar->nR; j++)
 		{
+			// Define box limits, without going out of image
 			j1 = max(0, j - cullPar->bR / 2);
 			j2 = min(cullPar->nR - 1, j + cullPar->bR / 2);
-
+			// Lopp over box to count ngood and build list of good points
 			ngood = 0;
 			for (ii = i1; ii <= i2; ii++)
 			{
@@ -84,13 +94,17 @@ void cullSTData(CullParams *cullPar)
 					} /* Endif cullPar.. */
 				}	  /* End jj */
 			}		  /* End ii */
+			// If enough good points
 			if (ngood > cullPar->nGood)
 			{
 				midIndex = ngood / 2;
+				// Compute median
 				medianR = selectForCull(midIndex, ngood, listR);
 				medianA = selectForCull(midIndex, ngood, listA);
+				// Compute the difference from the median
 				diffA = (double)(cullPar->offA[i][j] - medianA);
 				diffR = (double)(cullPar->offR[i][j] - medianR);
+				// If the differences for the current point are greater than threshold then discard
 				if (fabs(diffA) > cullPar->maxA || fabs(diffR) > cullPar->maxR)
 				{
 					cullPar->offR[i][j] = (float)-LARGEINT;
@@ -116,8 +130,10 @@ void cullSTData(CullParams *cullPar)
 	(b) = temp;
 
 float selectForCull(uint32_t k, uint32_t n, float arr[])
+// Sort until middle value found
+// k = midindex, n = nGood, arr = list
 {
-	uint32_t i, ir, j, l, mid;
+	uint32_t i, ir, j, l, mid, m;
 	float a, temp;
 
 	l = 1;
@@ -134,8 +150,10 @@ float selectForCull(uint32_t k, uint32_t n, float arr[])
 		}
 		else
 		{
+			// get middle index
 			mid = (l + ir) >> 1;
-			SWAP(arr[mid], arr[l + 1])
+			if(arr[l+1] > arr[mid])
+				SWAP(arr[mid], arr[l + 1]);
 			if (arr[l] > arr[ir])
 			{
 				SWAP(arr[l], arr[ir])

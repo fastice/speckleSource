@@ -82,12 +82,53 @@ $(info NOPIE ="$(NOPIE)")
 FFLAGS  =	 -g
 ERS1CODEDIR =	ers1Code
 
-COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/earthRadiusFunctions.o \
+COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/bilinearInterp.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeHeading.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computePhiZ.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeScale.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeTiePoints.o \
+	    	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeXYangle.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/earthRadiusFunctions.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/geojsonCode.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getDataStringSpecial.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getBaseline.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getHeight.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getMVhInputFile.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getRegion.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getShelfMask.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getXYHeight.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/groundRangeToLLNew.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/initMatrix.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/initRoutines.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpOffsets.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpPhaseImage.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpTideDiff.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpVCorrect.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpXYDEM.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/julianDay.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/llToImageNew.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/lltoxy.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/lltoxy1.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/outputGeocodedImage.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/parseInputFile.o \
-	                $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/julianDay.o \
-	                $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/lltoxy1.o \
-	                $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOldPar.o
-
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/parseIrregFile.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/polintVec.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/rangeAzimuthToLL.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOffsets.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOldPar.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readShelf.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readTiePoints.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readXYDEM.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/rotateFlowDirectionToRA.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/rotateFlowDirectionToXY.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/scalingFunctions.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/smlocateZD.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/svBase.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/vectorFunc.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/xyGetZandSlope.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/xytoll1.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/xytoll.o
 
 FFT =	$(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_1.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_2.o \
         $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_3.o $(PROGDIR)/fft/fftw-2.1.5/fftw/$(FFTDIR)/fn_4.o \
@@ -141,6 +182,9 @@ RECIPES  =	$(PROGDIR)/cRecipes/$(MACHTYPE)-$(OSTYPE)/polint.o $(PROGDIR)/cRecipe
 
 UNWRAP = $(PROGDIR)/unwrapSource/unWrap/$(MACHTYPE)-$(OSTYPE)/labelRegions.o
 
+GDALIO = 	$(PROGDIR)/gdalIO/gdalIO/$(MACHTYPE)-$(OSTYPE)/gdalIO.o \
+			$(PROGDIR)/gdalIO/gdalIO/$(MACHTYPE)-$(OSTYPE)/dictionaryCode.o
+
 
 
 TARGETS = strack  strackw  cullst cullls
@@ -157,10 +201,12 @@ STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/sTrackOut.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/getInt.o \
 	 	Strack/$(MACHTYPE)-$(OSTYPE)/getMask.o \
-                Strack/$(MACHTYPE)-$(OSTYPE)/parseBase.o \
-                Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
+        Strack/$(MACHTYPE)-$(OSTYPE)/parseBase.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/readBothOffsetsStrack.o \
+        Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
 
-STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
+STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
 
 strack:
 	@for i in ${STRACKDIRS}; do \
@@ -170,8 +216,8 @@ strack:
 			cd $(PROGDIR); \
 		); done
 		gcc $(MEM) $(CCFLAGS1) $(NOPIE) \
-                Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON)  \
-                -lm  -o $(BINDIR)/strack
+                Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON) $(GDALIO) \
+                -lm -lgdal  -o $(BINDIR)/strack
 
 #******************************************************************************************************************
 #*********************************************strackw **************************************************************
@@ -180,9 +226,12 @@ strack:
 STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseInitialOffsets.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/sTrackOut.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/readBothOffsetsStrack.o \
 	 	Strack/$(MACHTYPE)-$(OSTYPE)/getMask.o
 
-STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
+STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common
 
 strackw:
 	@for i in ${STRACKWDIRS}; do \
@@ -192,9 +241,9 @@ strackw:
 			cd $(PROGDIR); \
 		); done
 		gcc $(MEM)   $(CCFLAGS1) $(NOPIE) \
-		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) \
+		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
-                -lm  -o $(BINDIR)/strackw
+                -lm -lgdal -o $(BINDIR)/strackw
 
 
 #******************************************************************************************************************
@@ -206,9 +255,10 @@ CULLST  =	Cullst/$(MACHTYPE)-$(OSTYPE)/loadCullData.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullStats.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullSmooth.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullIslands.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/writeCullData.o
 
-CULLSTDIRS =	Cullst $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/unwrapSource/unWrap
+CULLSTDIRS =	Cullst $(PROGDIR)/clib $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/cRecipes  $(PROGDIR)/unwrapSource/unWrap
 
 cullst:
 	@for i in ${CULLSTDIRS}; do \
@@ -218,8 +268,8 @@ cullst:
 			cd $(PROGDIR); \
 		); done
 		gcc $(MEM) $(CCFLAGS1) \
-                Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(UNWRAP) \
-                -lm  -o $(BINDIR)/cullst
+                Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(COMMON) $(UNWRAP) $(GDALIO)\
+                -lm  -lgdal -o $(BINDIR)/cullst
 
 
 #******************************************************************************************************************

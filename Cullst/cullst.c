@@ -2,10 +2,12 @@
 #include "stdint.h"
 #include "string.h"
 #include "clib/standard.h"
+#include "gdalIO/gdalIO/grimpgdal.h"
 #include "cullst.h"
 #include "math.h"
 #include <stdlib.h>
 #include <unistd.h>
+
 #define LARGEINT -2e9
 static char **mallocByteMat(int32_t nA, int32_t nR);
 static void readArgs(int argc, char *argv[], CullParams *cullPar);
@@ -14,18 +16,28 @@ static void addSubtractSimOffsets(CullParams *cullPar, float mySign);
 /*
    Global variables definitions
 */
+double SLat = -91.;
 int32_t RangeSize = 0;		 /* Range size of complex image */
 int32_t AzimuthSize = 0;	 /* Azimuth size of complex image */
 int32_t BufferSize = 0;		 /* Size of nonoverlap region of the buffer */
 int32_t BufferLines = 0;	 /* # of lines of nonoverlap in buffer */
 double RangePixelSize = 0;	 /* Range PixelSize */
 double AzimuthPixelSize = 0; /* Azimuth PixelSize */
-double SLat = -91.;
+int32_t HemiSphere = 0;
+int32_t DemType = 0;
+double Rotation = 0;
+char *Abuf1, *Abuf2, *Dbuf1, *Dbuf2;
+int32_t llConserveMem = 0;			/* Kluge to maintain backwards compat 9/13/06 */
+float *AImageBuffer, *DImageBuffer; /* Kluge 05/31/07 to seperate image buffers */
+void *offBufSpace1, *offBufSpace2, *offBufSpace3, *offBufSpace4;
+void *lBuf1, *lBuf2, *lBuf3, *lBuf4;
+
 
 int main(int argc, char *argv[])
 {
 	CullParams cullPar;
 	FILE *fp;
+	GDALAllRegister();
 
 	readArgs(argc, argv, &cullPar);
 
@@ -36,6 +48,7 @@ int main(int argc, char *argv[])
 	   Load data
 	*/
 	loadCullData(&cullPar);
+	
 	/*
 	   if useSim flag set, then read sim offsets, and subtract the intial guess prior to culling.
 	 */
@@ -115,7 +128,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 	int32_t islandThresh;
 	int32_t sr, sa;
 	int32_t boxSize, nGood;
-	float maxA, maxR;
+	float maxA, maxR, corrThresh;
 	int32_t singleMT;
 	int32_t i, n, sLen;
 
@@ -135,6 +148,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 	islandThresh = -1;
 	cullPar->ignoreOffsets = FALSE;
 	cullPar->useSim = FALSE;
+	corrThresh = 0.0;
 
 	for (i = 1; i <= n; i++)
 	{
@@ -147,6 +161,16 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 		else if (strstr(argString, "sa") != NULL)
 		{
 			sscanf(argv[i + 1], "%i", &sa);
+			i++;
+		}
+		else if (strstr(argString, "corrThresh") != NULL)
+		{
+			sscanf(argv[i + 1], "%f", &corrThresh);
+			if(corrThresh < 0 || corrThresh >=1) 
+			{
+				fprintf(stderr, "\n\ncoorThresh must be in interval (0,1)\n\n");
+				usage();
+			}
 			i++;
 		}
 		else if (strstr(argString, "boxSize") != NULL)
@@ -208,7 +232,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 	cullPar->nGood = nGood;
 	cullPar->maxA = maxA;
 	cullPar->maxR = maxR;
-
+	cullPar->corrThresh = corrThresh;
 	cullPar->singleMT = singleMT;
 
 	inBase = argv[argc - 2];
@@ -216,93 +240,133 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 
 	fprintf(stderr, "|%s|\n", inBase);
 	fprintf(stderr, "|%s|\n", outBase);
+
+	const char *baseNames[] = {outBase, outBase, inBase, inBase, outBase, outBase, outBase, outBase, outBase};
+	const char *exts[] = {".dr", ".da",".sr", ".sa", ".cc", ".mt", ".dat", ".vrt", ".mt.vrt"};
+	const int numExts = sizeof(exts) / sizeof(exts[0]);
 	sLen = strlen(outBase);
-	cullPar->outFileR = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->outFileA = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->outFileC = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->outFileT = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->outFileD = (char *)malloc(sizeof(char) * sLen + 5);
+
+	for (int i = 0; i < numExts; i++)
+	{
+		const size_t len = sLen + strlen(exts[i]) + 1;
+		char *filename = (char *)malloc(sizeof(char) * len);
+		filename[0] = '\0';
+		strcpy(filename, baseNames[i]);
+		strcat(filename, exts[i]);
+
+		switch (i)
+		{
+		case 0:
+			cullPar->outFileR = filename;
+			break;
+		case 1:
+			cullPar->outFileA = filename;
+			break;
+		case 2:
+			cullPar->outFileSR = filename;
+			break;
+		case 3:
+			cullPar->outFileSA = filename;
+			break;
+		case 4:
+			cullPar->outFileC = filename;
+			break;
+		case 5:
+			cullPar->outFileT = filename;
+			break;
+		case 6:
+			cullPar->outFileD = filename;
+			break;
+		case 7:
+			cullPar->outFileVRT = filename;
+			break;
+		case 8:
+			cullPar->outFileVRTMT = filename;
+			break;
+		}
+	}
+	const char *extsI[] = {".dr", ".da", ".cc", ".mt", ".dat", ".vrt", ".mt.vrt"};
+	const int numExtsI = sizeof(extsI) / sizeof(extsI[0]);
 	sLen = strlen(inBase);
-	cullPar->outFileSA = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->outFileSR = (char *)malloc(sizeof(char) * sLen + 4);
+	for (int i = 0; i < numExtsI; i++)
+	{
+		const size_t len = sLen + strlen(extsI[i]) + 1;
+		char *filename = (char *)malloc(sizeof(char) * len);
+		filename[0] = '\0';
+		strcpy(filename, inBase);
+		strcat(filename, extsI[i]);
 
-	cullPar->outFileR[0] = '\0';
-	cullPar->outFileR[0] = '\0';
-	cullPar->outFileC[0] = '\0';
-	cullPar->outFileT[0] = '\0';
-	cullPar->outFileD[0] = '\0';
-	cullPar->outFileSA[0] = '\0';
-	cullPar->outFileSR[0] = '\0';
-
-	strcat(cullPar->outFileR, outBase);
-	strcat(cullPar->outFileA, outBase);
-	strcat(cullPar->outFileC, outBase);
-	strcat(cullPar->outFileT, outBase);
-	strcat(cullPar->outFileD, outBase);
-	strcat(cullPar->outFileSA, inBase);
-	strcat(cullPar->outFileSR, inBase);
-
-	strcat(cullPar->outFileR, ".dr");
-	strcat(cullPar->outFileA, ".da");
-	strcat(cullPar->outFileC, ".cc");
-	strcat(cullPar->outFileT, ".mt");
-	strcat(cullPar->outFileD, ".dat");
-	strcat(cullPar->outFileSR, ".sr");
-	strcat(cullPar->outFileSA, ".sa");
-
-	sLen = strlen(inBase);
-	cullPar->inFileR = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->inFileA = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->inFileC = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->inFileT = (char *)malloc(sizeof(char) * sLen + 4);
-	cullPar->inFileD = (char *)malloc(sizeof(char) * sLen + 5);
-	cullPar->inFileR[0] = '\0';
-	cullPar->inFileA[0] = '\0';
-	cullPar->inFileC[0] = '\0';
-	cullPar->inFileT[0] = '\0';
-	cullPar->inFileD[0] = '\0';
-
-	strcat(cullPar->inFileR, inBase);
-	strcat(cullPar->inFileA, inBase);
-	strcat(cullPar->inFileC, inBase);
-	strcat(cullPar->inFileT, inBase);
-	strcat(cullPar->inFileD, inBase);
-
-	strcat(cullPar->inFileR, ".dr");
-	strcat(cullPar->inFileA, ".da");
-	strcat(cullPar->inFileC, ".cc");
-	strcat(cullPar->inFileT, ".mt");
-	strcat(cullPar->inFileD, ".dat");
+		switch (i)
+		{
+		case 0:
+			cullPar->inFileR = filename;
+			break;
+		case 1:
+			cullPar->inFileA = filename;
+			break;
+		case 2:
+			cullPar->inFileC = filename;
+			break;
+		case 3:
+			cullPar->inFileT = filename;
+			break;
+		case 4:
+			cullPar->inFileD = filename;
+			break;
+		case 5:
+			cullPar->inFileVRT = filename;
+			break;
+		case 6:
+			cullPar->inFileVRTMT = filename;
+			break;
+		}
+	}
 
 	if (cullPar->useSim == TRUE)
 	{
+		const char *exts[] = {".dr", ".da", ".dat", ".vrt", ".cc"};
+		const int numExts = sizeof(exts) / sizeof(exts[0]);
 		sLen = strlen(simBase);
-		cullPar->inFileSimR = (char *)malloc(sizeof(char) * sLen + 4);
-		cullPar->inFileSimA = (char *)malloc(sizeof(char) * sLen + 4);
-		cullPar->inFileSimD = (char *)malloc(sizeof(char) * sLen + 5);
-		cullPar->inFileSimR[0] = '\0';
-		cullPar->inFileSimA[0] = '\0';
-		cullPar->inFileSimD[0] = '\0';
-		strcat(cullPar->inFileSimR, simBase);
-		strcat(cullPar->inFileSimA, simBase);
-		strcat(cullPar->inFileSimD, simBase);
-		strcat(cullPar->inFileSimR, ".dr");
-		strcat(cullPar->inFileSimA, ".da");
-		strcat(cullPar->inFileSimD, ".dat");
-		fprintf(stderr, "Using simfile : %s %s %s\n", cullPar->inFileSimR, cullPar->inFileSimA, cullPar->inFileSimD);
+		for (int i = 0; i < numExts; i++)
+		{
+			const size_t len = sLen + strlen(exts[i]) + 1;
+			char *filename = (char *)malloc(sizeof(char) * len);
+			filename[0] = '\0';
+			strcpy(filename, simBase);
+			strcat(filename, exts[i]);
+
+			switch (i)
+			{
+			case 0:
+				cullPar->inFileSimR = filename;
+				break;
+			case 1:
+				cullPar->inFileSimA = filename;
+				break;
+			case 2:
+				cullPar->inFileSimD = filename;
+				break;
+			case 3:
+				cullPar->inFileSimVRT = filename;
+				break;
+			}
+		}
 	}
+	cullPar->metaData = NULL;
+	cullPar->metaDataMT = NULL;
 
 	return;
 }
 
 static void usage()
 {
-	error("cullst -useSim offsets -ignoreOffsets -islandThresh islandThresh -singleMT singleMT -maxR maxR -maxA maxA -nGood nGood -boxSize boxSize -sr sr -sa sa inbase outbase\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+	error("cullst -useSim offsets -ignoreOffsets -islandThresh islandThresh -singleMT singleMT -maxR maxR -maxA maxA -nGood nGood -boxSize boxSize -sr sr -sa sa inbase outbase\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
 		  "where",
 		  "useSim is a simulated offsets file to subtract off in cull",
-		  "sr,sa = smoothing window size to apply (if odd then 111, if even 0.51110.5",
+		  "sr,sa = smoothing window width (full) to apply (if odd then 3->111, if even then 4-> 0.5 1 1 1 0.5)",
 		  "islandThresh = cull isolated islands < islandThresh in diameter",
 		  "singleMT = only retain this match type (1,2,or3)",
 		  "maxR,maxA = max deviation from local median",
+		  "corrThresh = min correlation (default 0 to pass all)",
 		  "ignoreOffsets = do not use information from offset file to cull large matches");
 }

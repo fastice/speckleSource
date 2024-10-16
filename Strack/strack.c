@@ -4,7 +4,8 @@
 
 double SLat = -91.;
 
-static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex, int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries);
+static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex, int32_t *floatFlag, 
+	int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries, int32_t *byteOrder);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -31,17 +32,19 @@ int main(int argc, char *argv[])
 	int32_t noComplex;
 	int32_t floatFlag, maxTries;
 	inputImageStructure inputImage;
-	int32_t hanningFlag, legacyFlag, gaussFlag;
+	int32_t hanningFlag, legacyFlag, gaussFlag, byteOrder;
 	stateV sv1, sv2;
-	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries);
+	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries, &byteOrder);
 	trackPar.floatFlag = floatFlag;
 	trackPar.noComplex = noComplex;
 	trackPar.hanningFlag = hanningFlag;
 	trackPar.gaussFlag = gaussFlag;
 	trackPar.legacyFlag = legacyFlag; /* Flag to use stuff for RADARSAT - doppler etc */
 	trackPar.maxTries = maxTries;
+	trackPar.byteOrder = byteOrder;
+	fprintf(stderr,"Byte order %i  [LSB %i, MSB %i]\n", trackPar.byteOrder, LSB, MSB);
 	fprintf(stderr, "maxTries = %i\n", maxTries);
-
+	GDALAllRegister();
 	if (noComplex == TRUE)
 	{
 		fprintf(stderr, "\n\n*** noComplex flag set- amplitude matching only ***\n\n");
@@ -108,7 +111,8 @@ int main(int argc, char *argv[])
 }
 
 static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex,
-					 int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries)
+					 int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag, 
+					 int32_t *gaussFlag, int32_t *maxTries, int *byteOrder)
 {
 	int32_t n, i;
 	char *argString;
@@ -121,6 +125,7 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 	*hanningFlag = TRUE;
 	*legacyFlag = FALSE;
 	*gaussFlag = FALSE;
+	*byteOrder = MSB;
 	*maxTries = 2;
 	for (i = 1; i <= n; i++)
 	{
@@ -137,6 +142,8 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 			*gaussFlag = TRUE;
 		else if (strstr(argString, "-singleAmp") != NULL)
 			*maxTries = 1;
+		else if (strstr(argString, "-LSB") != NULL)
+			*byteOrder = LSB;
 		else
 			usage();
 	}
@@ -145,5 +152,5 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 
 static void usage()
 {
-	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning parFile \n");
+	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning -LSB parFile \n");
 }

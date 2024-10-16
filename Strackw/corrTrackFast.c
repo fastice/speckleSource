@@ -19,6 +19,7 @@
 #define NBUFFERLINES 2000
 #define OS 2 /* Amplitude oversample factor */
 #define OSA 2
+#define FFTWPLANMODE FFTW_ESTIMATE
 static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2, float **dataS, float **dataR, float *rShift, float *aShift, float *cMax);
 static int32_t corrMatch(TrackParams *trackPar, double **sqS, double **sqR, double **tmpS1, double **tmpS2, float *rShift1, float *aShift1, float *cMax);
 static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar);
@@ -39,6 +40,7 @@ static void writeDatFile(TrackParams *trackPar);
 static void getShifts(double range, double azimuth, Offsets *offsets, double *dr, double *da);
 static void readBothOffsetsStrackw(Offsets *offsets);
 static int32_t maskValue(TrackParams *trackPar, int32_t r1, int32_t a1);
+
 
 /* ************************ GLOBAL VARIABLES ***************************/
 strackComplex *cBuf1, *cBuf2;		 /* Input buffers */
@@ -144,6 +146,10 @@ void corrTrackFast(TrackParams *trackPar)
 	mallocSpace(trackPar);
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
+	fprintf(stderr, "FFT Size (not oversampled) R,A %i %i\n", trackPar->wRa, trackPar->wAa);
+	fprintf(stderr, "Search chip  (not oversampled) R,A %i %i\n",trackPar->wRa - 2 * trackPar->edgePadR, trackPar->wAa - 2 * trackPar->edgePadA);
+	fprintf(stderr, "Search Radius %i %i\n", trackPar->edgePadR - NFAST/4, trackPar->edgePadA-NFAST/4);
+	fprintf(stderr, "Search Radius with PAD %i %i\n", trackPar->edgePadR, trackPar->edgePadA);
 	fprintf(stderr, "wR2,wA2 %i %i\n", wR2 / 2, wA2 / 2);
 	meanS = mallocDoubleMat(2 * trackPar->edgePadA * OS + 1, 2 * trackPar->edgePadR * OS + 1);
 	sigmaS = mallocDoubleMat(2 * trackPar->edgePadA * OS + 1, 2 * trackPar->edgePadR * OS + 1);
@@ -196,18 +202,14 @@ void corrTrackFast(TrackParams *trackPar)
 	*/
 	if (trackPar->polyShift == FALSE)
 	{
-		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		fprintf(stderr, "%lu\n", (unsigned long) (strlen(trackPar->initOffsetsFile) + 6));
-		tBuf[0] = '\0';
-		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
-		tBuf = strcat(tBuf, ".da");
-		trackPar->initOffsets.file = tBuf;
-		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		tBuf[0] = '\0';
-		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
-		tBuf = strcat(tBuf, ".dr");
-		trackPar->initOffsets.rFile = tBuf;
-		readBothOffsetsStrackw(&(trackPar->initOffsets));
+		if(readBothOffsetsStrackVrt(&(trackPar->initOffsets), trackPar->initOffsetsFile) == FALSE) {
+			// Old method
+			trackPar->initOffsets.file = appendSuff(trackPar->initOffsetsFile, ".da", 
+				malloc(strlen(trackPar->initOffsetsFile) + 4));
+			trackPar->initOffsets.rFile = appendSuff(trackPar->initOffsetsFile, ".dr", 
+				malloc(strlen(trackPar->initOffsetsFile) + 4));
+			readBothOffsetsStrack(&(trackPar->initOffsets));
+		}	
 	}
 	/* clear buffers before starting */
 	for (i = 0; i < trackPar->nA; i++)
@@ -306,11 +308,11 @@ void corrTrackFast(TrackParams *trackPar)
 				trackPar->type[i][j] = 0;
 			} /* end if maskVal...*/
 		}	  /* End for j=0... */
-
-		fwriteBS(trackPar->offR[i], sizeof(float), trackPar->nR, fpR, FLOAT32FLAG);
-		fwriteBS(trackPar->offA[i], sizeof(float), trackPar->nR, fpA, FLOAT32FLAG);
-		fwriteBS(trackPar->corr[i], sizeof(float), trackPar->nR, fpC, FLOAT32FLAG);
-		fwriteBS(trackPar->type[i], sizeof(char), trackPar->nR, fpT, BYTEFLAG);
+		writeOffsets(i, trackPar, fpR, fpA, fpC, fpT);
+		//fwriteBS(trackPar->offR[i], sizeof(float), trackPar->nR, fpR, FLOAT32FLAG);
+		//fwriteBS(trackPar->offA[i], sizeof(float), trackPar->nR, fpA, FLOAT32FLAG);
+		//fwriteBS(trackPar->corr[i], sizeof(float), trackPar->nR, fpC, FLOAT32FLAG);
+		//fwriteBS(trackPar->type[i], sizeof(char), trackPar->nR, fpT, BYTEFLAG);
 		nTot = (i + 1) * trackPar->nR;
 		if (nGood > 0)
 			cAvg = cAvg / (double)(nGood);
@@ -333,6 +335,7 @@ void corrTrackFast(TrackParams *trackPar)
 	fclose(fpC);
 	fclose(fpT);
 	writeDatFile(trackPar);
+	writeVrtFile(trackPar);
 }
 
 /*
@@ -406,7 +409,8 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	/* Added navg values to scale computation to avoid overflow that was occurring with tsx data */
-	scale = 1. / ((float)wRa * (float)wAa * (float)wRa * (float)wAa * (float)(OSA * OSA * OSA * OSA) * (OS * OS * (trackPar->navgA + 1) * (trackPar->navgR + 1))); /* rough guess at scale to avoid fp overflow */
+	scale = 1. / ((float)wRa * (float)wAa * (float)wRa * (float)wAa * 
+		(float)(OSA * OSA * OSA * OSA) * (OS * OS * (trackPar->navgA + 1) * (trackPar->navgR + 1))); /* rough guess at scale to avoid fp overflow */
 	/*
 	  Load buffers if needed (only required if patch is outside buffer)
 	*/
@@ -599,10 +603,10 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 			im2[i1][j1].re = dataR[i][j];
 		}
 	}
-	/*
+	
 	fpDebug= fopen("test1.debug","w");	fwriteBS(im1[0],sizeof(float),2*wAa*wRa,fpDebug,FLOAT32FLAG);
 	fpDebug= fopen("test2.debug","w");	fwriteBS(im2[0],sizeof(float),2*wAa*wRa,fpDebug,FLOAT32FLAG);    exit(-1);
-	*/
+	
 	return (TRUE);
 }
 
@@ -948,6 +952,7 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 	/*
 	  Step 4: find peak in correlation function
 	*/
+	
 	scaleW = 1.0 / ((double)(OS * OS * OS * OS) * (double)trackPar->wAa * (double)(trackPar->wAa - 2 * trackPar->edgePadA) *
 					(double)trackPar->wRa * (trackPar->wRa - 2 * trackPar->edgePadR));
 	maxCorr = -1E30;
@@ -1139,23 +1144,23 @@ static void fftCorrPlans(TrackParams *trackPar)
 	extern fftwnd_plan aForwardIn;
 	extern fftwnd_plan aReverseNoPad;
 	fprintf(stderr, "1 %i %i\n", NFAST, NFAST);
-	trackPar->cForwardFast = fftw2d_create_plan(NFAST, NFAST, FFTW_FORWARD, FFTW_MEASURE);
+	trackPar->cForwardFast = fftw2d_create_plan(NFAST, NFAST, FFTW_FORWARD, FFTWPLANMODE);
 	fprintf(stderr, "3 %i %i\n", NOVER * NFAST, NOVER * NFAST);
-	trackPar->cReverseFast = fftw2d_create_plan(NOVER * NFAST, NOVER * NFAST, FFTW_BACKWARD, FFTW_MEASURE);
+	trackPar->cReverseFast = fftw2d_create_plan(NOVER * NFAST, NOVER * NFAST, FFTW_BACKWARD, FFTWPLANMODE);
 	fprintf(stderr, "4 %i \n", trackPar->wA);
 	trackPar->onedForward1 = fftw_create_plan_specific(trackPar->wA,
-													   FFTW_FORWARD, FFTW_MEASURE, patch1[0], trackPar->wR, f1[0], trackPar->wR);
-	trackPar->onedForward1R = fftw_create_plan_specific(trackPar->wR, FFTW_FORWARD, FFTW_MEASURE, patch1[0], 1, f1[0], 1);
+													   FFTW_FORWARD, FFTWPLANMODE, patch1[0], trackPar->wR, f1[0], trackPar->wR);
+	trackPar->onedForward1R = fftw_create_plan_specific(trackPar->wR, FFTW_FORWARD, FFTWPLANMODE, patch1[0], 1, f1[0], 1);
 	fprintf(stderr, "5 %i\n", trackPar->wA);
-	trackPar->onedForward2 = fftw_create_plan_specific(trackPar->wA, FFTW_FORWARD, FFTW_MEASURE, patch2[0], trackPar->wR, f2[0], trackPar->wR);
-	trackPar->onedForward2R = fftw_create_plan_specific(trackPar->wR, FFTW_FORWARD, FFTW_MEASURE, patch2[0], 1, f2[0], 1);
+	trackPar->onedForward2 = fftw_create_plan_specific(trackPar->wA, FFTW_FORWARD, FFTWPLANMODE, patch2[0], trackPar->wR, f2[0], trackPar->wR);
+	trackPar->onedForward2R = fftw_create_plan_specific(trackPar->wR, FFTW_FORWARD, FFTWPLANMODE, patch2[0], 1, f2[0], 1);
 	fprintf(stderr, "6- %i %i\n", trackPar->wAa * OS, trackPar->wRa * OS);
-	aForward = fftw2d_create_plan(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_FORWARD, FFTW_MEASURE); /* ^^^ */
+	aForward = fftw2d_create_plan(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
 	fprintf(stderr, "8 - %i %i \n", trackPar->wAa * OS, trackPar->wRa * OS);
-	aReverseNoPad = fftw2d_create_plan(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_BACKWARD, FFTW_MEASURE); /* ^^^ */
+	aReverseNoPad = fftw2d_create_plan(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_BACKWARD, FFTWPLANMODE); /* ^^^ */
 
 	fprintf(stderr, "10 - %i %i\n", trackPar->wAa, trackPar->wRa);
-	aForwardIn = fftw2d_create_plan(trackPar->wAa, trackPar->wRa, FFTW_FORWARD, FFTW_MEASURE); /* ^^^ */
+	aForwardIn = fftw2d_create_plan(trackPar->wAa, trackPar->wRa, FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
 }
 
 /*************************************************************

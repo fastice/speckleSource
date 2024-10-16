@@ -1,8 +1,11 @@
 #include "mosaicSource/common/common.h"
 #include "fft/fftw-2.1.5/fftw/fftw.h"
+#include "gdalIO/gdalIO/grimpgdal.h"
 
 #define GEODATMASK 0
 #define OFFSETMASK 1
+#define LSB 0
+#define MSB 1
 
 typedef int16_t strackComplexElement;
 
@@ -66,8 +69,11 @@ typedef struct
 	char *outFileC;		   /* Correlation ouput file */
 	char *outFileT;		   /* Match type ouput file */
 	char *outFileD;		   /* Header (.dat) file */
+	char *vrtFile;
+	char *MTvrtFile;
 	char *maskFile;
 	char *maskGeodat;
+	char *maskvrt;
 	int32_t maskFlag;
 	int32_t maskType;
 	FILE *fpI1; /* File pointers to images */
@@ -147,6 +153,7 @@ typedef struct
 	double latc;
 	int32_t osF; /* azimuth oversample */
 	int32_t maxTries;
+	int32_t byteOrder;
 } TrackParams;
 
 void parseTrack(char *parFile, TrackParams *trackPar);
@@ -154,5 +161,11 @@ void parseBase(TrackParams *trackPar);
 void parseInitialOffsets(TrackParams *trackPar);
 void speckleTrack(TrackParams *trackPar);
 void sTrackOut(TrackParams *trackPar);
+void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpT);
 void getInt(TrackParams *trackPar);
 void getMask(TrackParams *trackPar);
+void writeVrtFile(TrackParams *trackPar);
+//void writeSingleVRT(int32_t nR, int32_t nA, dictNode *metaData, char *vrtFile, char *bandFiles[], char *bandNames[],
+ //                   int dataTypes[], char *byteSwapOption, int32_t nBands);
+int readBothOffsetsStrackVrt(Offsets *offsets, char *vrtFile);
+void readBothOffsetsStrack(Offsets *offsets);

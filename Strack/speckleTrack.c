@@ -44,9 +44,7 @@ static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trac
 static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar);
 void printLineSummary(int32_t nTot, int32_t a1, double cAvg, double cAvgAmp, int32_t nMask, time_t lastTime,
 					  time_t startTime, TrackParams *trackPar);
-static void readBothOffsetsStrack(Offsets *offsets);
 static void writeDatFile(TrackParams *trackPar);
-static void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpT);
 /* Setup code */
 static void clearTrackParBuffs(TrackParams *trackPar);
 static void computeSinShift(double **sinShift, double **cosShift, TrackParams *trackPar);
@@ -193,6 +191,7 @@ void speckleTrack(TrackParams *trackPar)
 			findImage2Pos(r1, a1, trackPar, &r2, &a2);
 			rShift = (r2 - r1);
 			aShift = (a2 - a1);
+			
 			/* returns 1 if no mask available, 0 or 1 with mask */
 			maskVal = maskValue(trackPar, r1 * trackPar->scaleFactor, a1 * trackPar->scaleFactor);
 			if (maskVal > 1)
@@ -203,6 +202,7 @@ void speckleTrack(TrackParams *trackPar)
 			*/
 			if (boundsCheck(r1, a1, r2, a2, trackPar->wR, trackPar->wA, trackPar) && maskVal > 0 && trackPar->noComplex == FALSE)
 			{
+				
 				/* Read patches from image */
 				haveData = getPatches(r1, a1, r2, a2, fp1, fp2, trackPar);
 				/*  Estimate any doppler component in azimuth */
@@ -226,6 +226,7 @@ void speckleTrack(TrackParams *trackPar)
 					good = -1;
 					finalizeCmpxMatch(cMax, iMax, jMax, wRover2exp, wAover2exp, invNOVER,
 									  trackPar, &good, &type, &rShift1, &aShift1, &cAvg, &nCorr);
+					
 				}
 				else
 				{
@@ -261,6 +262,7 @@ void speckleTrack(TrackParams *trackPar)
 				r1a = trackPar->rStart + j * trackPar->deltaR - trackPar->wRa / 2 * ampWScale;
 				r2a = r1a + (r2 - r1);
 				a2a = a1a + (a2 - a1);
+				
 				if (boundsCheck(r1a, a1a, r2a, a2a, trackPar->wRa * ampWScale, trackPar->wAa * ampWScale, trackPar) && maskVal > 0)
 				{
 					haveData = getAmpPatches(r1a, a1a, r2a, a2a, fp1, fp2, trackPar, large);
@@ -325,6 +327,7 @@ void speckleTrack(TrackParams *trackPar)
 		else
 			cAvgAmp = 0.0;
 		printLineSummary(nTot, a1, cAvg, cAvgAmp, nMask, lastTime, myStart, trackPar);
+		//error("STOP");
 	} /* End for i=0... */
 	fprintf(stderr, "\n\nTotal time %f\n", (time(NULL) - myStart) / 60.);
 	fclose(fpR);
@@ -332,6 +335,7 @@ void speckleTrack(TrackParams *trackPar)
 	fclose(fpC);
 	fclose(fpT);
 	writeDatFile(trackPar);
+	writeVrtFile(trackPar);
 }
 
 /**************************** Matching Code ***************************************/
@@ -560,7 +564,7 @@ static void cmpPSWithPad(TrackParams *trackPar)
 }
 
 /*
-  Directly oversample the area in a box of width NSFAST around peak, with NOVER sample
+  Directly oversample the area in a box of width NFAST around peak, with NOVER sample
  */
 static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax)
 {
@@ -1098,7 +1102,6 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 	float scale, power1, power2;
 	int32_t nZero;
 	size_t sSize, wR, s1, s2, a1a, a2a;
-
 	zero.re = 0.0;
 	zero.im = 0.0;
 	nZero = 0;
@@ -1151,8 +1154,10 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 			j2 = r2 + j;
 			if (trackPar->floatFlag == TRUE)
 			{
-				patch1Use[i][j] = fftwBuf1[i1][j1];
-				patch2Use[i][j] = fftwBuf2[i2][j2];
+				patch1Use[i][j].re = fftwBuf1[i1][j1].re * 1000;
+				patch1Use[i][j].im = fftwBuf1[i1][j1].im * 1000;
+				patch2Use[i][j].re = fftwBuf2[i2][j2].re * 1000;
+				patch2Use[i][j].im = fftwBuf2[i2][j2].im * 1000;
 			}
 			else
 			{
@@ -1161,6 +1166,7 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 				patch1Use[i][j].im = (fftw_real)(ers1Buf1[i1][j1].i);
 				patch2Use[i][j].im = (fftw_real)(ers1Buf2[i2][j2].i);
 			}
+			
 			if (trackPar->hanningFlag == TRUE)
 			{
 				/* removed patch 1 weighting 10/19/18, compensated correlation with 1.5 scale */
@@ -1169,11 +1175,15 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 			}
 			power1 = absCmpx(patch1Use[i][j], TRUE);
 			power2 = absCmpx(patch2Use[i][j], TRUE);
-			if (power1 < 1e-9 || power2 < 1e-9)
+			if (power1 < 1e-9 || power2 < 1e-9) {
 				nZero++;
+			}
+			
 			/* If more than 20 effectively zero points, skip patch - avoids edges */
-			if (nZero > 20)
+			if (nZero > 20) {
 				return (FALSE);
+			}
+				
 			p1 += power1;
 			p2 += power2;
 		}
@@ -1284,57 +1294,6 @@ void printLineSummary(int32_t nTot, int32_t a1, double cAvg, double cAvgAmp, int
 			trackPar->nAmp, trackPar->nAmpL, trackPar->nFail, percentFail, cAvg, cAvgAmp, nMask, lineTime, totalTime);
 }
 
-static void readBothOffsetsStrack(Offsets *offsets)
-{
-	char *datFile, buf[1024], line[1024];
-	FILE *fp;
-	int32_t rO, aO, nr, na;
-	float deltaA, deltaR;
-	double c1;
-	float *fBuf, *fBufR;
-	char *file;
-	int32_t lineCount, eod, i;
-	/*  Read inputfile	*/
-	file = offsets->file;
-	datFile = &(buf[0]);
-	buf[0] = '\0';
-	datFile = strcat(datFile, file);
-	datFile = strcat(datFile, ".dat");
-	fp = openInputFile(datFile);
-	lineCount = 0;
-	lineCount = getDataString(fp, lineCount, line, &eod);
-	if (sscanf(line, "%i%i%i%i%f%f", &rO, &aO, &nr, &na, &deltaR, &deltaA) != 6)
-		error("%s  %i of %s", "readBothOffsetsStrack -- Missing image params at line:", lineCount, datFile);
-	fclose(fp);
-	/* Load offsets structure */
-	offsets->nr = nr;
-	offsets->na = na;
-	offsets->rO = rO;
-	offsets->aO = aO;
-	offsets->deltaA = deltaA;
-	offsets->deltaR = deltaR;
-	offsets->da = (float **)malloc(sizeof(float *) * na);
-	offsets->dr = (float **)malloc(sizeof(float *) * na);
-	/*  Malloc buffers	*/
-	fBuf = (float *)malloc(sizeof(float) * na * nr);
-	fBufR = (float *)malloc(sizeof(float) * na * nr);
-	for (i = 0; i < na; i++)
-	{
-		offsets->da[i] = &(fBuf[i * nr]);
-		offsets->dr[i] = &(fBufR[i * nr]);
-	}
-	/*  Read files	*/
-	fprintf(stderr, "--- Reading offset file %s\n\n", file);
-	fp = openInputFile(offsets->file);
-	for (i = 0; i < na; i++)
-		freadBS(offsets->da[i], sizeof(float), nr, fp, FLOAT32FLAG);
-	fclose(fp);
-	fprintf(stderr, "--- Reading offset file %s\n\n", offsets->rFile);
-	fp = openInputFile(offsets->rFile);
-	for (i = 0; i < na; i++)
-		freadBS(offsets->dr[i], sizeof(float), nr, fp, FLOAT32FLAG);
-	fclose(fp);
-}
 
 /*
    Write offsets data file
@@ -1342,32 +1301,21 @@ static void readBothOffsetsStrack(Offsets *offsets)
 static void writeDatFile(TrackParams *trackPar)
 {
 	FILE *fp;
-	char geo2[512], *tmp;
+	char geo2[2048], *tmp, filename[2048];
 	fp = fopen(trackPar->outFileD, "w");
 	fprintf(fp, "%i %i %i %i %i %i\n", trackPar->rStart * trackPar->scaleFactor, trackPar->aStart * trackPar->scaleFactor,
 			trackPar->nR, trackPar->nA, trackPar->deltaR * trackPar->scaleFactor, trackPar->deltaA * trackPar->scaleFactor);
+	// Make a copy of file name so dirname doesnot corrupt
+	filename[0] = '\0';
+	strcpy(filename, trackPar->imageFile2);
 	/* Add geodats for pair */
 	geo2[0] = '\0';
-	tmp = strcat(geo2, dirname(trackPar->imageFile2));
+	tmp = strcat(geo2, dirname(filename));
 	tmp = strcat(geo2, "/");
 	tmp = strcat(geo2, trackPar->intGeodat);
 	fprintf(fp, "%s %s\n", trackPar->intGeodat, geo2);
 }
 
-/*
-  Write offsets, correlation, and match type to output file
- */
-static void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpT)
-{
-	fwriteBS(trackPar->offR[i], sizeof(float), trackPar->nR, fpR, FLOAT32FLAG);
-	fflush(fpR);
-	fwriteBS(trackPar->offA[i], sizeof(float), trackPar->nR, fpA, FLOAT32FLAG);
-	fflush(fpA);
-	fwriteBS(trackPar->corr[i], sizeof(float), trackPar->nR, fpC, FLOAT32FLAG);
-	fflush(fpC);
-	fwriteBS(trackPar->type[i], sizeof(char), trackPar->nR, fpT, BYTEFLAG);
-	fflush(fpT);
-}
 
 /* ************************ Setup Routines ********************************/
 /*
@@ -1387,6 +1335,7 @@ static void clearTrackParBuffs(TrackParams *trackPar)
 		}
 	}
 }
+
 
 /*
   Pre compute sinShitfs. (legacy)
@@ -1701,7 +1650,7 @@ static void mallocSpace(TrackParams *trackPar)
 
 static void trackParInits(TrackParams *trackPar)
 {
-	char *tBuf;
+	char *tBuf, vrtBuf[2048];
 	trackPar->nFail = 0.0;
 	trackPar->nComplex = 0.0;
 	trackPar->nAmp = 0;
@@ -1712,18 +1661,14 @@ static void trackParInits(TrackParams *trackPar)
 	*/
 	if (trackPar->polyShift == FALSE)
 	{
-		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		fprintf(stderr, "%lu\n", (unsigned long) (strlen(trackPar->initOffsetsFile) + 6));
-		tBuf[0] = '\0';
-		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
-		tBuf = strcat(tBuf, ".da");
-		trackPar->initOffsets.file = tBuf;
-		tBuf = (char *)malloc(strlen(trackPar->initOffsetsFile) + 6);
-		tBuf[0] = '\0';
-		tBuf = strcat(tBuf, trackPar->initOffsetsFile);
-		tBuf = strcat(tBuf, ".dr");
-		trackPar->initOffsets.rFile = tBuf;
-		readBothOffsetsStrack(&(trackPar->initOffsets));
+		if(readBothOffsetsStrackVrt(&(trackPar->initOffsets), trackPar->initOffsetsFile) == FALSE) {
+			// Old method
+			trackPar->initOffsets.file = appendSuff(trackPar->initOffsetsFile, ".da", 
+				malloc(strlen(trackPar->initOffsetsFile) + 4));
+			trackPar->initOffsets.rFile = appendSuff(trackPar->initOffsetsFile, ".dr", 
+				malloc(strlen(trackPar->initOffsetsFile) + 4));
+			readBothOffsetsStrack(&(trackPar->initOffsets));
+		}	
 	}
 }
 

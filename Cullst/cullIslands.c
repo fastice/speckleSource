@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "clib/standard.h"
+#include "gdalIO/gdalIO/grimpgdal.h"
 #include "cullst.h"
 #include "utilsSource/intFloat/intFloat.h"
 #include <stdlib.h>
