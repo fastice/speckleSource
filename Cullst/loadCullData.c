@@ -17,7 +17,7 @@
 static char **mallocByteMat(int32_t nA, int32_t nR);
 static float **mallocFloatMat(int32_t nA, int32_t nR);
 static void loadFile(void **data, char *filename, int32_t size, int32_t flag, int32_t nr, int32_t na);
-
+static void insertCullParams(dictNode **metaData, CullParams *cullPar);
 static int32_t fileExists(char *vrtFile)
 {
 	if (access(vrtFile, F_OK) == 0)
@@ -38,7 +38,18 @@ void mallocBuffers(CullParams *cullPar) {
 	cullPar->sigmaA = mallocFloatMat(cullPar->nA, cullPar->nR);
 	cullPar->type = mallocByteMat(cullPar->nA, cullPar->nR);
 }
-
+static void insertCullParams(dictNode **metaData, CullParams *cullPar)
+{
+	// Add cull params to meta data
+	insert_node(metaData, "sR", STR_BUFF("%i", cullPar->sR));
+	insert_node(metaData, "sA", STR_BUFF("%i", cullPar->sA));
+	insert_node(metaData, "boxSize", STR_BUFF("%i", cullPar->bR));
+	insert_node(metaData, "nGood", STR_BUFF("%i", cullPar->nGood));
+	insert_node(metaData, "maxR", STR_BUFF("%f", cullPar->maxR));
+	insert_node(metaData, "maxA", STR_BUFF("%f", cullPar->maxA));
+	insert_node(metaData, "corrThresh", STR_BUFF("%f", cullPar->corrThresh));
+	insert_node(metaData, "singleMT", STR_BUFF("%i", cullPar->singleMT));
+}
 void loadFromVRT(CullParams *cullPar) {
 	GDALDatasetH hDS;
 	dictNode *metaData = NULL, *metaDataMT=NULL;
@@ -52,6 +63,8 @@ void loadFromVRT(CullParams *cullPar) {
 	cullPar->nA = GDALGetRasterYSize(hDS);
 	// Read and Process metadata
 	readDataSetMetaData(hDS, &metaData);
+	// Cull parameters
+	insertCullParams(&metaData, cullPar);
 	cullPar->metaData = metaData;
 	cullPar->rStart = atoi(get_value(metaData, "r0"));
 	cullPar->aStart = atoi(get_value(metaData, "a0"));
@@ -95,6 +108,8 @@ static void populateMetaData(CullParams *cullPar)
     insert_node(&metaData, "deltaR", STR_BUFF("%i", cullPar->deltaR));
     insert_node(&metaData, "sigmaStreaks", STR_BUFF("%f", 0.));
     insert_node(&metaData, "sigmaRange", STR_BUFF("%f", 0.));
+	// Cull parameters
+	insertCullParams(&metaData, cullPar);
 	if(cullPar->geo2 != NULL)
     	insert_node(&metaData, "geo1", STR_BUFF("%s", cullPar->geo1));
 	if(cullPar->geo2 != NULL)
@@ -105,6 +120,7 @@ static void populateMetaData(CullParams *cullPar)
 	// Assume MSB if loading using dat
 	insert_node(&metaData, "ByteOrder", "MSB");
 	cullPar->metaData = metaData;
+	dictNode *current;
 }
 
 static char **splitString(char *string) {

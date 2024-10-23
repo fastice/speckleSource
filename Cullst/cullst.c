@@ -48,7 +48,6 @@ int main(int argc, char *argv[])
 	   Load data
 	*/
 	loadCullData(&cullPar);
-	
 	/*
 	   if useSim flag set, then read sim offsets, and subtract the intial guess prior to culling.
 	 */
