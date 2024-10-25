@@ -58,18 +58,22 @@ ifneq ($(INCLUDEPATH)),)
 	INCLUDEPATH =	$(PROGDIR)
 endif
 $(info INCLUDEPATH ="$(INCLUDEPATH)")
+# this depends on fft compilation. Linux needs, darwin not.  Manually set or unset if this
+ifneq ($(OSTYPE),darwin)
+	NOPIE =	-no-pie
+else
+        GDALLIB = /opt/homebrew/lib
+        GDALINCLUDE = /opt/homebrew/include
+endif
 #
 # Compiler stuff
 #
 C =		gcc
-CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
-CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS)'
+CFLAGS =        '-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
+CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
 #-Wunused-variable'
 CCFLAGS1= '-O3'
-# this depends on fft compilation. Linux needs, darwin not.  Manually set or unset if this
-ifneq ($(OSTYPE),darwin)
-	NOPIE =	-no-pie
-endif
+
 $(info NOPIE ="$(NOPIE)")
 # uncomment to debug
 #CFLAGS =	'-g $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
@@ -217,7 +221,7 @@ strack:
 		); done
 		gcc $(MEM) $(CCFLAGS1) $(NOPIE) \
                 Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON) $(GDALIO) \
-                -lm -lgdal  -o $(BINDIR)/strack
+                -lm -lgdal -L$(GDALLIB)   -o $(BINDIR)/strack
 
 #******************************************************************************************************************
 #*********************************************strackw **************************************************************
@@ -243,7 +247,7 @@ strackw:
 		gcc $(MEM)   $(CCFLAGS1) $(NOPIE) \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
-                -lm -lgdal -o $(BINDIR)/strackw
+                -lm -lgdal -L$(GDALLIB)  -o $(BINDIR)/strackw
 
 
 #******************************************************************************************************************
@@ -269,7 +273,7 @@ cullst:
 		); done
 		gcc $(MEM) $(CCFLAGS1) \
                 Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(COMMON) $(UNWRAP) $(GDALIO)\
-                -lm  -lgdal -o $(BINDIR)/cullst
+                -lm  -lgdal -L$(GDALLIB)  -o $(BINDIR)/cullst
 
 
 #******************************************************************************************************************
