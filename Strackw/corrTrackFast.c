@@ -8,17 +8,12 @@
 #include <sys/types.h>
 #include "time.h"
 
-#define NOVER 10
-#define NFAST 16
-#define INTPATCHSIZE 8
-#define LA 3
+#define NOVER 16  // Oversample for 2x oversample, (ie. 1/(NOVER*2) quantization)
+#define NFAST 20  // Area to oversample for locating correlation peak
 #define BAD 0
-#define CMATCH 1
 #define AMPMATCH 2
-#define AMPMATCHLARGE 3
 #define NBUFFERLINES 2000
 #define OS 2 /* Amplitude oversample factor */
-#define OSA 2
 #define FFTWPLANMODE FFTW_ESTIMATE
 static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2, float *rShift, float *aShift, float *cMax);
 static int32_t corrMatch(TrackParams *trackPar, double **tmpS1, double **tmpS2, int32_t i, int32_t j, float rShift, float aShift, float *cMax);
@@ -42,7 +37,8 @@ static void initMatrix(float **data,  int32_t wA, int32_t wR, float value);
 static void initByteMatrix(char **data,  int32_t wA, int32_t wR, char value);
 static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, fftw_complex **f2a, TrackParams *trackPar);
 static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_complex **im1in, fftw_complex **im2in, TrackParams *trackPar);
-static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA, int32_t edgePadR, int32_t edgePadA, float scale, TrackParams *trackPar);
+static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA, int32_t edgePadR, 
+						int32_t edgePadA, float scale, TrackParams *trackPar, int32_t largePatch);
 static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1, int32_t sSize, FILE *fp);
 static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double meanR, double sigmaR, double *maxCorr);
 static void getInitialGuess(TrackParams *trackPar);
@@ -67,7 +63,7 @@ StrackBuf imageBuf2;
 /* New stuff for oversampling ^^^ */
 fftw_complex **img1in, **img2in; /* ^^^ Detected images for amplitude match*/
 fftwnd_plan aForwardIn;
-fftw_complex **fftFa1os, **fftFa2os; // **fftFa1Los, **fftFa2Los; /*  ^^^ */						   /* ... */
+fftw_complex **fftFa1os, **fftFa2os; 
 fftw_complex **patch1, **patch2;
 double **meanS;
 double **sigmaS;
@@ -92,7 +88,6 @@ void corrTrackFast(TrackParams *trackPar)
 	FILE *fpR, *fpA, *fpC, *fpT;
 	int32_t i, j, nGood;
 	int32_t r1, a1, r2, a2;
-	// int32_t iShift, jShift;
 	int32_t wR2, wA2;
 	float cMax;
 	int32_t WA2, WR2;
@@ -138,15 +133,9 @@ void corrTrackFast(TrackParams *trackPar)
 	trackPar->nFail = 0.0;
 	trackPar->nComplex = 0.0;
 	trackPar->nAmp = 0;
-	cAvg = 0.0;
 	nMask = 0;
 	// Initial offsets initialization
 	getInitialGuess(trackPar);
-	// clear buffers before starting 
-	initMatrix(trackPar->offR, trackPar->nA, trackPar->nR, (float)(-LARGEINT));
-	initMatrix(trackPar->offA, trackPar->nA, trackPar->nR, (float)(-LARGEINT));
-	initMatrix(trackPar->corr, trackPar->nA, trackPar->nR, 0.0);
-	initByteMatrix(trackPar->type, trackPar->nA, trackPar->nR, BAD);
 	// Loop on azimuth
 	for (i = 0; i < trackPar->nA; i++)
 	{
@@ -189,8 +178,8 @@ void corrTrackFast(TrackParams *trackPar)
 					cAvg += cMax;
 					nGood++;
 					good = TRUE;
-					//fprintf(stderr, "%i %f %f\n",nGood, cAvg, cMax);
 				} else good = FALSE;
+
 			}
 			else
 			{
@@ -198,7 +187,7 @@ void corrTrackFast(TrackParams *trackPar)
 				trackPar->offA[i][j] = -LARGEINT;
 				trackPar->corr[i][j] = 0;
 				trackPar->type[i][j] = 0;
-			} /* end if maskVal...*/
+			} /* end if maskVal..*/
 		} // End range loop
 		writeOffsets(i, trackPar, fpR, fpA, fpC, fpT);
 		// Update stats
@@ -225,9 +214,8 @@ void corrTrackFast(TrackParams *trackPar)
 	writeVrtFile(trackPar);
 }
 
-/*************************************************************************
-   Find inital shift
-   ************************************************************************* */
+// Find inital shift
+  
 static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t *r2, int32_t *a2)
 {
 	double aShift, rShift;
@@ -265,26 +253,22 @@ static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t
 		*a2 = a1 + (int)(aShift - 0.5);
 }
 
-/*
-  Read patches
-  It reads the full size patch for image 2, so that subsequent programs
-  will just read the relevant patch when needed.
-*/
+//  Read patches
+//  It reads the full size patch for image 2, so that subsequent programs
+//  will just read the relevant patch when needed.
 static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2,
 								  FILE *fp1, FILE *fp2, TrackParams *trackPar, int32_t large)
 {
 	extern StrackBuf imageBuf1;
 	extern StrackBuf imageBuf2;
 	extern fftw_complex **img1, **img2;
-	extern fftw_complex **img1in, **img2in;								  /* ^^^ Detected images for amplitude match*/
-	extern fftwnd_plan aForwardIn;										  /* ^^^ */
-	extern fftw_complex **fftFa1os, **fftFa1Los; /*  ^^^ */
+	extern fftw_complex **img1in, **img2in;	// Detected images for amplitude match
+	extern fftwnd_plan aForwardIn;
+	extern fftw_complex **fftFa1os, **fftFa2os;
 	extern fftw_complex **fftFa1, **fftFa2; /* FFt's */
-	//int32_t azShift, rangeShift;
 	int32_t wR2, wA2, wRa, wAa;
 	size_t sSize;
 	float scale;
-	
 	if (a1 >= trackPar->imageP1.nSlpA || a2 >= trackPar->imageP2.nSlpA)
 	{
 		error("getCorrPatchesFast");
@@ -303,7 +287,7 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 	// Added navg values to scale computation to avoid overflow that was 
 	//  occurring with tsx data 
 	scale = 1. / ((float)wRa * (float)wAa * (float)wRa * (float)wAa *
-				  (float)(OSA * OSA * OSA * OSA) * (OS * OS * (trackPar->navgA + 1) * (trackPar->navgR + 1))); /* rough guess at scale to avoid fp overflow */
+				  (float)(OS * OS * OS * OS) * (OS * OS * (trackPar->navgA + 1) * (trackPar->navgR + 1)));		  
 	//  Load buffers if needed (only required if patch is outside buffer)
 	updateSLCBuffer(1, trackPar, a1, sSize, fp1);
 	updateSLCBuffer(2, trackPar, a2, sSize, fp2);
@@ -320,15 +304,16 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 	//  Detect Data , Note the image patches are double bookkept as im1/im2 and dataR, dataS
 	//  based on the way the program was kluged together
 	// Smaller patch
-	detectPatch(dataR, img2, wR2, wA2, trackPar->edgePadR, trackPar->edgePadA, scale, trackPar);
+	detectPatch(dataR, img2, wR2, wA2, trackPar->edgePadR, trackPar->edgePadA, scale, trackPar, FALSE);
 	// Larger patch
-	detectPatch(dataS, img1, trackPar->wRa * OS, trackPar->wAa * OS, 0, 0, scale, trackPar);
+	detectPatch(dataS, img1, trackPar->wRa * OS, trackPar->wAa * OS, 0, 0, scale, trackPar, TRUE);
 	/*
+	FILE *fpDebug;
 	fprintf(stderr, "%li\n", trackPar->wRa *OS * trackPar->wAa *OS*sizeof(fftw_complex));
-	fpDebug= fopen("test1.debug","w");	fwriteBS(dataR[0],wR2*wA2, sizeof(float), fpDebug,FLOAT32FLAG); fclose(fpDebug);
-	fpDebug= fopen("test1a.debug","w");	fwriteBS(im2[0],trackPar->wRa *OS * trackPar->wAa *OS ,sizeof(fftw_complex), fpDebug,FLOAT32FLAG); fclose(fpDebug);
-	fpDebug= fopen("test2.debug","w");	fwriteBS(dataS[0],trackPar->wRa *OS * trackPar->wAa *OS,sizeof(float),fpDebug,FLOAT32FLAG); fclose(fpDebug);
-	fpDebug= fopen("test2a.debug","w");	fwriteBS(im1[0],trackPar->wRa *OS * trackPar->wAa *OS,sizeof(fftw_complex),fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	fpDebug= fopen("test1.debug","w");	fwriteBS(dataS[0],trackPar->wRa *OS * trackPar->wAa *OS,sizeof(float),fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	fpDebug= fopen("test2.debug","w");	fwriteBS(dataR[0],wR2*wA2, sizeof(float), fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	fpDebug= fopen("test1a.debug","w");	fwriteBS(img1[0],trackPar->wRa *OS * trackPar->wAa *OS ,sizeof(fftw_complex), fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	fpDebug= fopen("test2a.debug","w");	fwriteBS(img2[0],trackPar->wRa *OS * trackPar->wAa *OS,sizeof(fftw_complex),fpDebug,FLOAT32FLAG); fclose(fpDebug);
 		 exit(-1);
 	*/
 	return (TRUE);
@@ -363,11 +348,12 @@ static int32_t corrMatch(TrackParams *trackPar, double **tmpS1, double **tmpS2, 
 	// Save values 
 	trackPar->offR[i][j] = rShift;
 	trackPar->offA[i][j] = aShift;
-	trackPar->corr[i][j] = *cMax;	 /*cMax;*/
+	trackPar->corr[i][j] = *cMax;
 	trackPar->type[i][j] = AMPMATCH; 
 	return TRUE;
 }
 
+// Compute mean and sigma. Return values for small patch, large patch is saved for each position in meanS, sigmaS
 static void computeMeanSigma(TrackParams *trackPar, double *meanR,  double *sigmaR, double **tmpS1, double **tmpS2) 
 {
 	extern float **dataS, **dataR;
@@ -378,6 +364,7 @@ static void computeMeanSigma(TrackParams *trackPar, double *meanR,  double *sigm
 	int32_t wR2, wA2;
 	*sigmaR = 0;
 	*meanR = 0;
+	// Compute single values for small chip
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	for (la = 0; la < wA2; la++) 
@@ -392,8 +379,8 @@ static void computeMeanSigma(TrackParams *trackPar, double *meanR,  double *sigm
 	*sigmaR = *sigmaR / (double)(wR2 * wA2 - 1.);
 	*sigmaR -= *meanR * (*meanR);
 	//   Step 2:
-	//   Compute mean and variance for S1
-	//  first,do running average over columns
+	//   Compute mean and variance for large image for each 
+	//  potential chip position. First,do running average over columns
 	for (l = 0; l < trackPar->wAa * OS; l++)
 	{
 		sum1 = 0.0;
@@ -467,7 +454,7 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 	ampMatchEdge(trackPar, &iMax, &jMax, &cM, FALSE);
 	// Step 4: find peak in correlation function
 	getPeakCorr(trackPar, &iMax, &jMax, meanR, sigmaR, &maxCorr);
-	// fprintf(stderr, "%i %i %f ", iMax, jMax, maxCorr);
+	// Return if no data
 	if (maxCorr < 0)
 		return;
 	// Step 5:  load from around peak to oversample
@@ -498,7 +485,6 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 			}
 		}
 	*cMax = sqrt(*cMax) / ( (NFAST+1) * (NFAST+1));	
-	// fprintf(stderr, "%f \n", *cMax);
 	// Step 8: Compute raw, fractional pixel shift.
 	iMax = (iMax * NOVER) + iMax1 - (NOVER * (NFAST)) / 2;
 	jMax = (jMax * NOVER) + jMax1 - (NOVER * (NFAST)) / 2;
@@ -555,7 +541,7 @@ static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_
 	int32_t i1, i2, i, j, j1, j2;
 	strackComplex **ers1Buf1, **ers1Buf2;
 	fftw_complex **fftwBuf1, **fftwBuf2;
-
+	// Set up for float or int data
 	if (trackPar->floatFlag == TRUE)
 	{
 		sSize = sizeof(fftw_complex);
@@ -568,7 +554,7 @@ static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_
 		ers1Buf1 = (strackComplex **)imageBuf1.buf;
 		ers1Buf2 = (strackComplex **)imageBuf2.buf;
 	}
-
+	// Load data from image buffers
 	for (i = 0; i < trackPar->wAa; i++)
 	{
 		i1 = a1 - imageBuf1.firstRow + i;
@@ -607,9 +593,9 @@ static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, ff
 	wRa = trackPar->wRa;
 	wAa = trackPar->wAa;
 	// Zero the whole ff
-	for (i = 0; i < wAa * OSA; i++)
+	for (i = 0; i < wAa * OS; i++)
 	{
-		for (j = 0; j < wRa * OSA; j++)
+		for (j = 0; j < wRa * OS; j++)
 		{
 			f1a[i][j] = zero;
 			f2a[i][j] = zero;
@@ -618,11 +604,11 @@ static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, ff
 	// Fill the corners
 	for (i = 0; i < wAa / 2; i++)
 	{
-		i1 = OSA * wAa - wAa / OSA + i;
-		i2 = (wAa / OSA + i) % wAa;
+		i1 = OS * wAa - wAa / OS + i;
+		i2 = (wAa / OS + i) % wAa;
 		ia = i % wAa;
-		j1 = wRa * OSA - wRa / OSA;
-		j2 = wRa / OSA;
+		j1 = wRa * OS - wRa / OS;
+		j2 = wRa / OS;
 		for (j = 0; j < wRa / 2; j++)
 		{
 			ja = j % wRa;
@@ -642,12 +628,23 @@ static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, ff
 }
 
 static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA, int32_t edgePadR,
-						int32_t edgePadA, float scale, TrackParams *trackPar)
+						int32_t edgePadA, float scale, TrackParams *trackPar, int32_t largePatch)
 {
-	int32_t i, j, i1, j1, k, l, n, m;
+	int32_t i, j, i1, j1, k, l, n, m, extraR, extraA;
 	fftw_complex zero;
 	zero.re = 0.0;
 	zero.im = 0.0;
+	// Small catch can exceed window, but not the large patch
+	if(largePatch == TRUE) 
+	{
+		extraR = 0;
+		extraA = 0;
+	}
+	else
+	{
+		extraR = trackPar->navgR; 
+		extraA = trackPar->navgA;
+	}
 	for (i = 0; i < wA; i++)
 	{
 		i1 = edgePadA * OS + i;
@@ -660,11 +657,11 @@ static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA,
 				data[i][j] = 0;
 				for (m = -trackPar->navgA; m <= trackPar->navgA; m++)
 				{
-					k = min(max(i1 + m, 0), edgePadR * OS + wA + trackPar->navgA); /* Changed 11/12/08 data outside window */
+					k = min(max(i1 + m, 0), edgePadR * OS + wA + extraA - 1); /* Changed 11/12/08 data outside window */
 					for (n = -trackPar->navgR; n <= trackPar->navgR; n++)
 					{
 						/* fixed 11/12/08, changed from m to n */
-						l = min(max(j1 + n, 0), edgePadR * OS + wR + trackPar->navgR);
+						l = min(max(j1 + n, 0), edgePadR * OS + wR + extraR - 1);
 						data[i][j] += (im[k][l].re * im[k][l].re + im[k][l].im * im[k][l].im) * scale;
 					}
 				}
@@ -675,13 +672,14 @@ static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA,
 			}
 		}
 	}
-	// Do with second loop to avoid messing up smoothing.
+	// Copy to im with second loop to avoid smoothing issues.
 	for (i = 0; i < wA; i++)
 	{
 		i1 = edgePadA * OS + i;
 		for (j = 0; j < wR; j++)
 		{
 			j1 = edgePadR * OS + j;
+			data[i][j] = sqrt(data[i][j]);
 			im[i1][j1].re = data[i][j];
 			im[i1][j1].im = 0.0;
 		}
@@ -705,7 +703,7 @@ static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA,
 	}
 }
 
-
+// Interp offsets used for initial guess
 static float interpOffsets(float **image, float range, float azimuth, float minvalue, 
 						   int32_t nr, int32_t na)
 {
@@ -758,8 +756,9 @@ static void getShifts(double range, double azimuth, Offsets *offsets, double *dr
 	}
 }
 
-
-static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double meanR, double sigmaR, double *maxCorr)
+// Find the peak of the initial correlation function
+static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax,
+					    double meanR, double sigmaR, double *maxCorr)
 {
 	double scaleW;
 	extern double **meanS;
@@ -768,15 +767,14 @@ static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, dou
 	double wR2, wA2;
 	wR2 = trackPar->wRa - 2 * trackPar->edgePadR;
 	wA2 = trackPar->wAa - 2 * trackPar->edgePadA;
-	scaleW = 1.0 / ((double)(OS * OS * OS * OS) * (double)trackPar->wAa * (double)(wA2) *
-					(double)trackPar->wRa * (wR2));
+	scaleW = 1.0 / ((OS * OS * OS * OS) * trackPar->wAa * wA2 * trackPar->wRa * wR2);
 	*maxCorr = -1e30;
-	/* Loop to search over.Note goes past edge pad to fill buffer for over sampling */
+	// Loop to search over.Note goes past edge pad to fill buffer for over sampling */
 	for (l = -OS * trackPar->edgePadA; l <= OS * trackPar->edgePadA; l++)
 	{
 		i = l + OS * trackPar->edgePadA;
 		m = l + trackPar->wAa * OS / 2;
-		for (s = -2 * trackPar->edgePadR; s <= 2 * trackPar->edgePadR; s++)
+		for (s = -OS * trackPar->edgePadR; s <= OS * trackPar->edgePadR; s++)
 		{
 			j = s + OS * trackPar->edgePadR;
 			n = s + trackPar->wRa * OS / 2;
@@ -798,9 +796,8 @@ static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, dou
 	}
 }
 
-/*********************************************************
-   FFT's to do cross correlation for matching
-**********************************************************/
+
+//   FFT's to do cross correlation for matching
 static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large)
 {
 	extern fftwnd_plan aForward;
@@ -810,38 +807,21 @@ static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	extern fftw_complex **caNoPad;
 	extern fftw_complex **fftFa1, **fftFa2;
 	extern fftw_complex **img1, **img2;
-	fftwnd_plan *aFor;
-	fftw_complex **im1, **im2;
-	extern fftw_complex **psAmpNoPad;
-	fftw_complex **psANoPad;
-	fftw_complex **fa1, **fa2;
 	int32_t wR, wA;
 	int32_t i, j, i1, j1;
-
-	fa1 = fftFa1;
-	fa2 = fftFa2;
-	im1 = img1;
-	im2 = img2;
-	psANoPad = psAmpNoPad;
 	wA = trackPar->wAa;
 	wR = trackPar->wRa;
-	aFor = &aForward;
-	psANoPad = psAmpNoPad;
-	/*
-	  Step 1: FFT images  power spectrum
-	*/
-	fftwnd_one(*aFor, im1[0], fa1[0]);
-	fftwnd_one(*aFor, im2[0], fa2[0]);
-	/*
-	  Step 2: Compute zero padded power spectrum
-	*/
+	// Step 1: FFT images  for cross-power spectrum
+	fftwnd_one(aForward, img1[0], fftFa1[0]);
+	fftwnd_one(aForward, img2[0], fftFa2[0]);
+	// Step 2: Compute zero padded power spectrum
 	i1 = 0;
 	for (i = 0; i < wA * OS; i++)
 	{
 		for (j = 0; j < wR * OS; j++)
 		{
-			psANoPad[i][j].re = fa1[i1][j].re * fa2[i1][j].re + fa1[i1][j].im * fa2[i1][j].im;
-			psANoPad[i][j].im = fa1[i1][j].im * fa2[i1][j].re - fa1[i1][j].re * fa2[i1][j].im;
+			psAmpNoPad[i][j].re = fftFa1[i1][j].re * fftFa2[i1][j].re + fftFa1[i1][j].im * fftFa2[i1][j].im;
+			psAmpNoPad[i][j].im = fftFa1[i1][j].im * fftFa2[i1][j].re - fftFa1[i1][j].re * fftFa2[i1][j].im;
 		} /* End for j */
 		i1++;
 	} /* End for i */
@@ -873,26 +853,34 @@ static void overSampleC(TrackParams *trackPar)
 	extern fftw_complex **cFast, **cFastOver;
 	int32_t i, j;
 	int32_t i1, i2, j1, j2;
+	int32_t half;
+	half = NFAST/2;
 	fftwnd_one(trackPar->cForwardFast, cFast[0], psFast[0]);
-	/*
-	  Zero pad fft for over sampling
-	*/
-	for (i = 0; i <= NFAST / 2; i++)
+	//  Zero pad fft for over sampling
+	for (i = 0; i <= half; i++)
 	{
-		i1 = (NFAST + 1) * NOVER - NFAST / 2 - 1 + i;
-		i2 = NFAST / 2  + i;
-		j1 = (NFAST + 1) * NOVER - NFAST / 2 - 1;
-		j2 = NFAST / 2;
-		for (j = 0; j <= NFAST / 2; j++)
-		{
+		i1 = (NFAST + 1) * NOVER - half - 1 + i;
+		i2 = half  + i;
+		j1 = (NFAST + 1) * NOVER - half - 1;
+		j2 = half;
+		for (j = 0; j <= half; j++)
+		{	// lower left corner
 			psFastOver[i][j].re = psFast[i][j].re;
 			psFastOver[i][j].im = psFast[i][j].im;
-			psFastOver[i1][j].re = psFast[i2][j].re;
-			psFastOver[i1][j].im = psFast[i2][j].im;
-			psFastOver[i1][j1].re = psFast[i2][j2].re;
-			psFastOver[i1][j1].im = psFast[i2][j2].im;
-			psFastOver[i][j1].re = psFast[i][j2].re;
-			psFastOver[i][j1].im = psFast[i][j2].im;
+			if(j != 0) { // Upper left corner
+				psFastOver[i][j1].re = psFast[i][j2].re;
+				psFastOver[i][j1].im = psFast[i][j2].im;
+			}	
+			if(i != 0) { 
+				// lower right corner
+				psFastOver[i1][j].re = psFast[i2][j].re;
+				psFastOver[i1][j].im = psFast[i2][j].im;
+				if( j != 0 ) 
+				{   // upper right corner
+					psFastOver[i1][j1].re = psFast[i2][j2].re;
+					psFastOver[i1][j1].im = psFast[i2][j2].im;
+				}	
+			}
 			j1++;
 			j2++;
 		} /* End for j */
@@ -950,9 +938,9 @@ static void mallocSpace(TrackParams *trackPar)
 	extern fftw_complex **psNoPad;
 	extern fftw_complex **cNoPad;
 	extern fftw_complex **cFast, **cFastOver;
-	extern fftw_complex **img1, **img2;									  /* Detected images for amplitude match*/
-	extern fftw_complex **img1in, **img2in;								  /* ^^^ Detected images for amplitude match*/
-	extern fftw_complex **fftFa1os, **fftFa2os; //**fftFa1Los, , **fftFa2Los; /*  ^^^ */
+	extern fftw_complex **img1, **img2;		 /* Detected images for amplitude match*/
+	extern fftw_complex **img1in, **img2in;	/* ^^^ Detected images for amplitude match*/
+	extern fftw_complex **fftFa1os, **fftFa2os; 
 	extern fftw_complex **psAmpNoPad;
 	extern fftw_complex **caNoPad;
 	extern fftw_complex **psAmpNoPadL;
@@ -1019,7 +1007,6 @@ static void mallocSpace(TrackParams *trackPar)
 				ers1Tmp[i][j].i = 0;
 			}
 	}
-
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	/*
@@ -1042,7 +1029,7 @@ static void mallocSpace(TrackParams *trackPar)
 	fftFa2 = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);			   /* ^^^ */
 	fftFa1os = mallocfftw_complexMat(trackPar->wAa, trackPar->wRa);
 	fftFa2os = mallocfftw_complexMat(trackPar->wAa, trackPar->wRa);
-	psNoPad = mallocfftw_complexMat(trackPar->wA * OSA, trackPar->wR * OSA);
+	psNoPad = mallocfftw_complexMat(trackPar->wA * OS, trackPar->wR * OS);
 	psFast = mallocfftw_complexMat(NFAST+1, NFAST+1);
 	psFastOver = mallocfftw_complexMat((NFAST+1) * NOVER, (NFAST+1) * NOVER);
 	psAmpNoPad = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);
@@ -1068,7 +1055,11 @@ static void mallocSpace(TrackParams *trackPar)
 	trackPar->offA = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->corr = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->type = mallocByteMat(trackPar->nA, trackPar->nR);
-
+	// clear buffers before starting 
+	initMatrix(trackPar->offR, trackPar->nA, trackPar->nR, (float)(-LARGEINT));
+	initMatrix(trackPar->offA, trackPar->nA, trackPar->nR, (float)(-LARGEINT));
+	initMatrix(trackPar->corr, trackPar->nA, trackPar->nR, 0.0);
+	initByteMatrix(trackPar->type, trackPar->nA, trackPar->nR, BAD);
 	meanS = mallocDoubleMat(2 * trackPar->edgePadA * OS + 1, 2 * trackPar->edgePadR * OS + 1);
 	sigmaS = mallocDoubleMat(2 * trackPar->edgePadA * OS + 1, 2 * trackPar->edgePadR * OS + 1);
 	corrResult = mallocDoubleMat(2 * trackPar->edgePadA * OS + 1, 2 * trackPar->edgePadR * OS + 1);

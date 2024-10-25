@@ -59,11 +59,12 @@ ifneq ($(INCLUDEPATH)),)
 endif
 $(info INCLUDEPATH ="$(INCLUDEPATH)")
 # this depends on fft compilation. Linux needs, darwin not.  Manually set or unset if this
-ifneq ($(OSTYPE),darwin)
+ifneq ($(OSTYPE), darwin)
 	NOPIE =	-no-pie
+	LDFLAGS = -lgdal
 else
-        GDALLIB = /opt/homebrew/lib
-        GDALINCLUDE = /opt/homebrew/include
+    LDFLAGS = '-lgdal -L/opt/homebrew/lib'
+    GDALINCLUDE = /opt/homebrew/include
 endif
 #
 # Compiler stuff
@@ -221,7 +222,7 @@ strack:
 		); done
 		gcc $(MEM) $(CCFLAGS1) $(NOPIE) \
                 Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON) $(GDALIO) \
-                -lm -lgdal -L$(GDALLIB)   -o $(BINDIR)/strack
+                -lm $(LDFLAGS)  -o $(BINDIR)/strack
 
 #******************************************************************************************************************
 #*********************************************strackw **************************************************************
@@ -247,7 +248,7 @@ strackw:
 		gcc $(MEM)   $(CCFLAGS1) $(NOPIE) \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
-                -lm -lgdal -L$(GDALLIB)  -o $(BINDIR)/strackw
+                -lm $(LDFLAGS)  -o $(BINDIR)/strackw
 
 
 #******************************************************************************************************************
@@ -273,7 +274,7 @@ cullst:
 		); done
 		gcc $(MEM) $(CCFLAGS1) \
                 Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(COMMON) $(UNWRAP) $(GDALIO)\
-                -lm  -lgdal -L$(GDALLIB)  -o $(BINDIR)/cullst
+                -lm  $(LDFLAGS)  -o $(BINDIR)/cullst
 
 
 #******************************************************************************************************************
