@@ -747,8 +747,8 @@ static void getShifts(double range, double azimuth, Offsets *offsets, double *dr
 	range = (range - offsets->rO) / offsets->deltaR;
 	azimuth = (azimuth - offsets->aO) / offsets->deltaA;
 	/* Out of bounds */
-	*dr = interpOffsets((float **)offsets->dr, range, azimuth, minvalue, offsets->nr, offsets->na);
-	*da = interpOffsets((float **)offsets->da, range, azimuth, minvalue, offsets->nr, offsets->na);
+	*dr = bilinearInterp((float **)offsets->dr, range, azimuth,  offsets->nr,  offsets->na,  minvalue, (float)-LARGEINT);
+ 	*da = bilinearInterp((float **)offsets->da, range, azimuth,  offsets->nr,  offsets->na,  minvalue, (float)-LARGEINT);
 	if (*dr <= minvalue || *da <= minvalue)
 	{
 		*da = minvalue;
