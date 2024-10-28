@@ -25,7 +25,9 @@ static char **mallocByteMat(int32_t nA, int32_t nR);
 static float **mallocFloatMat(int32_t nx, int32_t ny);
 static double **mallocDoubleMat(int32_t nA, int32_t nR);
 static fftw_complex **mallocfftw_complexMat(int32_t nx, int32_t ny);
-static strackComplex **mallocErs1ComplexMat(int32_t nA, int32_t nR);
+static strackComplex **mallocStrackComplexMat(int32_t nA, int32_t nR);
+static void zeroComplexMatrix(fftw_complex **data, int32_t wA, int32_t wR);
+static void zeroStrackComplexMatrix(strackComplex **data, int32_t wA, int32_t wR);
 static void overSampleC(TrackParams *trackPar);
 static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax);
 static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large);
@@ -84,18 +86,15 @@ void corrTrackFast(TrackParams *trackPar)
 	extern double **corrResult;
 	double **tmpS1, **tmpS2;
 	extern float **dataS, **dataR;
+	extern time_t startTime, lastTime;
 	FILE *fp1, *fp2;
 	FILE *fpR, *fpA, *fpC, *fpT;
+	double cAvg;
+	float rShift, aShift, cMax;
 	int32_t i, j, nGood;
 	int32_t r1, a1, r2, a2;
 	int32_t wR2, wA2;
-	float cMax;
-	int32_t WA2, WR2;
-	extern time_t startTime, lastTime;
-	float rShift, aShift;
-	int32_t nTot;
-	int32_t good;
-	double cAvg;
+	int32_t nTot, good;
 	int32_t maskVal; /* Flag to determine whether to match */
 	int32_t nMask;
 	fprintf(stderr, "\nSPECKLE TRACKING\n");
@@ -214,8 +213,7 @@ void corrTrackFast(TrackParams *trackPar)
 	writeVrtFile(trackPar);
 }
 
-// Find inital shift
-  
+// Find inital shift  
 static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t *r2, int32_t *a2)
 {
 	double aShift, rShift;
@@ -320,9 +318,7 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 }
 
 
-/***************************************************************
-	Main driver for amplitude match (with edgepad)
-***************************************************************/
+//	Main driver for amplitude match (with edgepad)
 static int32_t corrMatch(TrackParams *trackPar, double **tmpS1, double **tmpS2, int32_t i, int32_t j, float rShift, float aShift, float *cMax)
 {
 	extern float **dataS, **dataR;
@@ -426,10 +422,9 @@ static void computeMeanSigma(TrackParams *trackPar, double *meanR,  double *sigm
 	}
 }
 
-/***********************************************************
-   Main code to execute correlation
-************************************************************/
-
+//
+//   Main code to execute correlation
+//
 static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,  float *rShift, float *aShift, float *cMax)
 {
 	extern float **dataS, **dataR;
@@ -492,6 +487,7 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 	*aShift = ((float)iMax - trackPar->edgePadA * OS * NOVER) / (NOVER * OS);
 }
 
+// Read more data from SLC's when buffers are empty
 static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1, int32_t sSize, FILE *fp)
 {
 	extern StrackBuf imageBuf1;
@@ -530,6 +526,7 @@ static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1
 		imageBuf->lastRow = a1a + min(nSlpA - a1a, NBUFFERLINES) - 1;
 	}
 }
+
 
 // Mv data from buffer to input image patches
 static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_complex **im1in,
@@ -583,6 +580,7 @@ static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_
 	}
 }
 
+
 // Zero pad for oversampling patches
 static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, fftw_complex **f2a, TrackParams *trackPar)
 {
@@ -627,6 +625,8 @@ static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, ff
 	}
 }
 
+
+// Detect patch and save amplitude
 static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA, int32_t edgePadR,
 						int32_t edgePadA, float scale, TrackParams *trackPar, int32_t largePatch)
 {
@@ -703,42 +703,8 @@ static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA,
 	}
 }
 
-// Interp offsets used for initial guess
-static float interpOffsets(float **image, float range, float azimuth, float minvalue, 
-						   int32_t nr, int32_t na)
-{
-	float p1, p2, p3, p4, t, u, dr;
-	int32_t i, j;
-	j = (int)range;
-	i = (int)azimuth;
-	// out of range
-	if (range < 0.0 || azimuth < 0.0 || (int)range >= nr || (int)azimuth >= na)
-		return -LARGEINT;
-	// Handle border pixels
-	if (j == (nr - 1) || i == (int)(na - 1))
-	{
-		dr = image[i][j];
-		if (dr < minvalue)
-			return -LARGEINT;
-	}
-	p1 = image[i][j];
-	p2 = image[i][j + 1];
-	p3 = image[i + 1][j + 1];
-	p4 = image[i + 1][j];
-	if (p1 <= minvalue || p2 <= minvalue || p3 <= minvalue || p4 <= minvalue)
-	{
-		dr = max(max(max(p1, p2), p3), p4);
-		if (dr < minvalue)
-			return -LARGEINT;
-		return dr;
-	}
-	return (float)((1.0 - t) * (1.0 - u) * p1 + t * (1.0 - u) * p2 +
-				    t * u * p3 + (1.0 - t) * u * p4);
-}
 
-/***************************************************************************
-   Get shifts from previous estimate
-****************************************************************************/
+// Get shifts from previous estimate
 static void getShifts(double range, double azimuth, Offsets *offsets, double *dr, double *da)
 {
 	float minvalue;
@@ -755,6 +721,7 @@ static void getShifts(double range, double azimuth, Offsets *offsets, double *dr
 		*dr = minvalue;
 	}
 }
+
 
 // Find the peak of the initial correlation function
 static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax,
@@ -844,9 +811,8 @@ static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	}
 }
 
-/*************************************************************
-   Over sample correlation
-**************************************************************/
+
+// Over sample correlation
 static void overSampleC(TrackParams *trackPar)
 {
 	extern fftw_complex **psFast, **psFastOver;
@@ -888,10 +854,7 @@ static void overSampleC(TrackParams *trackPar)
 	fftwnd_one(trackPar->cReverseFast, psFastOver[0], cFastOver[0]);
 }
 
-/******************************************************************************
-	Do plans for fft's
-	************************************************************** */
-
+// FFTW plans
 static void fftCorrPlans(TrackParams *trackPar)
 {
 	extern fftwnd_plan aForwardIn, aForward;
@@ -909,6 +872,7 @@ static void fftCorrPlans(TrackParams *trackPar)
 	aForwardIn = fftw2d_create_plan(trackPar->wAa, trackPar->wRa, FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
 }
 
+// Read offsets for intial guess
 static void getInitialGuess(TrackParams *trackPar)
 {
 if (trackPar->polyShift == FALSE)
@@ -925,10 +889,9 @@ if (trackPar->polyShift == FALSE)
 	}
 }
 
-/*************************************************************
-   Malloc space for all the global arrays/matrices and elements of trackPar
-*************************************************************/
-
+//
+//   Malloc space for all the global arrays/matrices and elements of trackPar
+//
 static void mallocSpace(TrackParams *trackPar)
 {
 	extern StrackBuf imageBuf1;
@@ -953,9 +916,7 @@ static void mallocSpace(TrackParams *trackPar)
 	strackComplex **ers1Tmp;
 	int32_t wA2, wR2;
 	int32_t i, j;
-	/*
-	  Input buffer.
-	*/
+	// Input buffer
 	imageBuf1.nr = trackPar->imageP1.nSlpR;
 	imageBuf1.na = NBUFFERLINES;
 	imageBuf1.firstRow = LARGEINT;
@@ -964,67 +925,37 @@ static void mallocSpace(TrackParams *trackPar)
 	imageBuf2.na = NBUFFERLINES;
 	imageBuf2.firstRow = LARGEINT;
 	imageBuf2.lastRow = -1;
-	
+	// fftw buffers
 	if (trackPar->floatFlag == TRUE)
 	{
 		fprintf(stderr, "Floating point input \n");
 		imageBuf1.buf = (void **)mallocfftw_complexMat(imageBuf1.na, imageBuf1.nr);
 		fftwTmp = (fftw_complex **)imageBuf1.buf;
-		for (i = 0; i < NBUFFERLINES; i++)
-			for (j = 0; j < imageBuf1.nr; j++)
-			{
-				fftwTmp[i][j].re = 1;
-				fftwTmp[i][j].im = 0;
-			}
-
+		zeroComplexMatrix(fftwTmp, imageBuf1.na, imageBuf1.nr);
 		imageBuf2.buf = (void **)mallocfftw_complexMat(imageBuf2.na, imageBuf2.nr);
 		fftwTmp = (fftw_complex **)imageBuf2.buf;
-		for (i = 0; i < NBUFFERLINES; i++)
-			for (j = 0; j < imageBuf2.nr; j++)
-			{
-				fftwTmp[i][j].re = 1;
-				fftwTmp[i][j].im = 0;
-			}
+		zeroComplexMatrix(fftwTmp, imageBuf2.na, imageBuf2.nr);
 	}
 	else
 	{
 		fprintf(stderr, "Short int input \n");
-		imageBuf1.buf = (void *)mallocErs1ComplexMat(imageBuf1.na, imageBuf1.nr);
+		imageBuf1.buf = (void *)mallocStrackComplexMat(imageBuf1.na, imageBuf1.nr);
 		ers1Tmp = (strackComplex **)imageBuf1.buf;
-		for (i = 0; i < NBUFFERLINES; i++)
-			for (j = 0; j < imageBuf1.nr; j++)
-			{
-				ers1Tmp[i][j].r = 1;
-				ers1Tmp[i][j].i = 0;
-			}
-
-		imageBuf2.buf = (void *)mallocErs1ComplexMat(imageBuf2.na, imageBuf2.nr);
+		zeroStrackComplexMatrix(ers1Tmp, imageBuf1.na, imageBuf1.nr);
+		imageBuf2.buf = (void *)mallocStrackComplexMat(imageBuf2.na, imageBuf2.nr);
 		ers1Tmp = (strackComplex **)imageBuf2.buf;
-		for (i = 0; i < NBUFFERLINES; i++)
-			for (j = 0; j < imageBuf2.nr; j++)
-			{
-				ers1Tmp[i][j].r = 1;
-				ers1Tmp[i][j].i = 0;
-			}
+		zeroStrackComplexMatrix(ers1Tmp, imageBuf2.na, imageBuf2.nr);
 	}
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
-	/*
-	  Patches
-	*/
+	// Patches
 	img1 = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS); /* ^^^ */
 	img2 = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS); /* ^^^ */
 	img1in = mallocfftw_complexMat(trackPar->wAa, trackPar->wRa);		  /* ^^^ */
 	img2in = mallocfftw_complexMat(trackPar->wAa, trackPar->wRa);		  /* ^^^ */
-	for (i = 0; i < trackPar->wAa * OS; i++)
-		for (j = 0; j < trackPar->wRa * OS; j++)
-		{
-			img1[i][j].im = 0.;
-			img2[i][j].im = 0.;
-		}
-	/*
-	  FFTs
-	*/
+	zeroComplexMatrix(img1, trackPar->wAa * OS, trackPar->wRa * OS);
+	zeroComplexMatrix(img2, trackPar->wAa * OS, trackPar->wRa * OS);
+	//  FFTs
 	fftFa1 = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);			   /* ^^^ */
 	fftFa2 = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);			   /* ^^^ */
 	fftFa1os = mallocfftw_complexMat(trackPar->wAa, trackPar->wRa);
@@ -1033,23 +964,12 @@ static void mallocSpace(TrackParams *trackPar)
 	psFast = mallocfftw_complexMat(NFAST+1, NFAST+1);
 	psFastOver = mallocfftw_complexMat((NFAST+1) * NOVER, (NFAST+1) * NOVER);
 	psAmpNoPad = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);
-	for (i = 0; i < (NFAST+1) * NOVER; i++)
-		for (j = 0; j < (NFAST+1) * NOVER; j++)
-		{
-			psFastOver[i][j].re = 0.0;
-			psFastOver[i][j].im = 0.0;
-		}
+	zeroComplexMatrix(psFastOver, (NFAST+1) * NOVER, (NFAST+1) * NOVER);
 	cFast = mallocfftw_complexMat(NFAST + 1, NFAST + 1);
 	cFastOver = mallocfftw_complexMat((NFAST + 1) * NOVER, (NFAST+1) * NOVER);
 	caNoPad = mallocfftw_complexMat(trackPar->wAa * OS, trackPar->wRa * OS);
 	caNoPadMag = mallocFloatMat(trackPar->wAa * OS, trackPar->wRa * OS);
-
-	for (i = 0; i < (NFAST+1) * NOVER; i++)
-		for (j = 0; j < (NFAST+1) * NOVER; j++)
-		{
-			cFastOver[i][j].re = 0.0;
-			cFastOver[i][j].im = 0.0;
-		}
+	zeroComplexMatrix(cFastOver, (NFAST+1) * NOVER, (NFAST+1) * NOVER);
 	/* Input buffers */
 	trackPar->offR = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->offA = mallocFloatMat(trackPar->nA, trackPar->nR);
@@ -1105,7 +1025,7 @@ static int32_t maskValue(TrackParams *trackPar, int32_t r1, int32_t a1)
 }
 
 /*************************************************************
-   Routines to Malloc matrices
+   Routines to Malloc and initialize matrices
 *************************************************************/
 static float **mallocFloatMat(int32_t nA, int32_t nR)
 {
@@ -1151,7 +1071,7 @@ static fftw_complex **mallocfftw_complexMat(int32_t nA, int32_t nR)
 	return tmp1;
 }
 
-static strackComplex **mallocErs1ComplexMat(int32_t nA, int32_t nR)
+static strackComplex **mallocStrackComplexMat(int32_t nA, int32_t nR)
 {
 	strackComplex *tmp, **tmp1;
 	int32_t i;
@@ -1160,6 +1080,33 @@ static strackComplex **mallocErs1ComplexMat(int32_t nA, int32_t nR)
 	for (i = 0; i < nA; i++)
 		tmp1[i] = &(tmp[i * nR]);
 	return tmp1;
+}
+
+
+static void zeroComplexMatrix(fftw_complex **data, int32_t wA, int32_t wR)
+{
+	int32_t i, j;
+	fprintf(stderr, "%i %i \n", wA, wR);
+	for (i = 0; i < wA; i++)
+		for (j = 0; j < wR; j++) 
+		{
+			data[i][j].re = 0.0;
+			data[i][j].im = 0.0;
+		}
+			
+}
+
+
+static void zeroStrackComplexMatrix(strackComplex **data, int32_t wA, int32_t wR)
+{
+	int32_t i, j;
+	for (i = 0; i < wA; i++)
+		for (j = 0; j < wR; j++)
+		{
+			data[i][j].r = 0.0;		
+			data[i][j].i = 0.0;
+		}
+			
 }
 
 static void initMatrix(float **data, int32_t wA, int32_t wR, float value)
