@@ -138,8 +138,9 @@ void corrTrackFast(TrackParams *trackPar)
 	// Loop on azimuth
 	for (i = 0; i < trackPar->nA; i++)
 	{
+		fprintf(stderr, "I %i %i\n", i, trackPar->aStart);
 		lastTime = time(NULL);
-		// Azimuth coordinate
+		// Azimuth coordinate for lower portion of the patch
 		a1 = trackPar->aStart + i * trackPar->deltaA - trackPar->wAa / 2;
 		cAvg = 0; // Avg corr for the row
 		nGood = 0; // nGood for the row
@@ -178,7 +179,6 @@ void corrTrackFast(TrackParams *trackPar)
 					nGood++;
 					good = TRUE;
 				} else good = FALSE;
-
 			}
 			else
 			{
