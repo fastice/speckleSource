@@ -113,6 +113,7 @@ void corrTrackFast(TrackParams *trackPar)
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	fprintf(stderr, "FFT Size (not oversampled) R,A %i %i\n", trackPar->wRa, trackPar->wAa);
+	fprintf(stderr, "FFT_REAL size %li\n", sizeof(fftw_real));
 	fprintf(stderr, "Search chip  (not oversampled) R,A %i %i\n", trackPar->wRa - 2 * trackPar->edgePadR, trackPar->wAa - 2 * trackPar->edgePadA);
 	fprintf(stderr, "Search Radius %i %i\n", trackPar->edgePadR - NFAST / 4, trackPar->edgePadA - NFAST / 4);
 	fprintf(stderr, "Search Radius with PAD %i %i\n", trackPar->edgePadR, trackPar->edgePadA);
