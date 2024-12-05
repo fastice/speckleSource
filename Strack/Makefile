@@ -5,7 +5,7 @@ OBJS= strack.o parseTrack.o parseBase.o parseInitialOffsets.o speckleTrack.o \
       sTrackOut.o getInt.o getMask.o parsePar.o writeVrt.o readBothOffsetsStrack.o
 
 MACHTYPE = $(shell uname -m)
-OSTYPE = $(shelf uname -s)
+OSTYPE = $(shell uname -s)
 
 $(shell mkdir -p $(MACHTYPE)-$(OSTYPE))
 
