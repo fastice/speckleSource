@@ -75,10 +75,18 @@ CCFLAGS1= -O3
 #CCFLAGS =  '-g $(MEM) -D$(MACHTYPE) $(COMPILEFLAGS)'
 #CCFLAGS1= '-g'
 #
-ifneq ($(OSTYPE),darwin)
+ifneq ("$(OSTYPE)", "Darwin")
 	NOPIE =	-no-pie
+	GDAL = -lgdal -lcurl  -lsqlite3 -llzma -lpoppler -lopenjp2 -lssh2 -llcms2
+	CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
+	CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) '
+else
+	GDALLIB = /opt/homebrew/lib
+	GDALINCLUDE = /opt/homebrew/include
+	GDAL = -lgdal -L/opt/homebrew/lib
+	CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
+	CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
 endif
-$(info NOPIE ="$(NOPIE)")
 #
 # ******** SHOULD NOT NEED TO MODIFY BELOW HERE *********
 #
