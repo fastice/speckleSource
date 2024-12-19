@@ -18,14 +18,7 @@ static char **mallocByteMat(int32_t nA, int32_t nR);
 static float **mallocFloatMat(int32_t nA, int32_t nR);
 static void loadFile(void **data, char *filename, int32_t size, int32_t flag, int32_t nr, int32_t na);
 static void insertCullParams(dictNode **metaData, CullParams *cullPar);
-static int32_t fileExists(char *vrtFile)
-{
-	if (access(vrtFile, F_OK) == 0)
-	{
-		return TRUE;
-	}
-	return FALSE;
-}
+
 
 void mallocBuffers(CullParams *cullPar) {
 //	  space
@@ -152,7 +145,7 @@ void loadCullData(CullParams *cullPar)
 	  Read .dat file
 	*/
 	fprintf(stderr, "Entering loadcull ...\n");
-	if(fileExists(cullPar->inFileVRT)) {
+	if(fileExists(cullPar->inFileVRT, FALSE)) {
 		fprintf(stderr, "Found VRT, reading that ...\n");
 		loadFromVRT(cullPar);
 		return;
