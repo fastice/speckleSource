@@ -152,5 +152,5 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 
 static void usage()
 {
-	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning -LSB parFile \n");
+	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning -LSB parFile \n\tLSB  use LSB for both output and flaoting point input\n ");
 }

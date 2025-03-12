@@ -1246,10 +1246,17 @@ static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trac
 		s1 = imageP1->nSlpR * min(imageP1->nSlpA - a1a, NBUFFERLINES);
 		offset1 = ((off_t)a1a * imageP1->nSlpR) * (off_t)sSize;
 		fseeko(fp1, offset1, SEEK_SET);
-		if (trackPar->floatFlag == TRUE)
-			freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, FLOAT32FLAG);
-		else
-			freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, INT16FLAG);
+		if (trackPar->floatFlag == TRUE) {
+			if(trackPar->byteOrder == MSB)
+			{
+				freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, FLOAT32FLAG);
+			} else {
+				size_t rv = fread((void *)imageBuf1->buf[0], sSize, s1, fp1);
+			}
+		} else 
+		{
+			freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, INT16FLAG);	
+		}		
 		imageBuf1->firstRow = a1a;
 		imageBuf1->lastRow = a1a + min(imageP1->nSlpA - a1a, NBUFFERLINES) - 1;
 	}

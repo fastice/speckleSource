@@ -93,5 +93,5 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag,
 
 static void usage()
 {
-	error("sTrack -integerComplex -LSB parFile \n");
+	error("sTrack -integerComplex -LSB parFile \n\tLSB  use LSB for both output and flaoting point input\n");
 }

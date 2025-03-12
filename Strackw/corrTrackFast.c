@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include "time.h"
 
-#define NOVER 16  // Oversample for 2x oversample, (ie. 1/(NOVER*2) quantization)
+#define NOVER 16 // Oversample for 2x oversample, (ie. 1/(NOVER*2) quantization)
 #define NFAST 20  // Area to oversample for locating correlation peak
 #define BAD 0
 #define AMPMATCH 2
@@ -73,6 +73,12 @@ double **corrResult;
 float **dataS;
 float **dataR;
 
+double timeStats=0.;
+double timeFFT=0.;
+double timeOver=0.;
+double timeMatch=0.;
+double timeIO=0.;
+
 /*
   Main routine for amplitude matching with an edge pad.
 */
@@ -97,6 +103,7 @@ void corrTrackFast(TrackParams *trackPar)
 	int32_t nTot, good;
 	int32_t maskVal; /* Flag to determine whether to match */
 	int32_t nMask;
+	clock_t time1, time2, time3;
 	fprintf(stderr, "\nSPECKLE TRACKING\n");
 	/*
 	   Internally keep edge pad bigger to acount for over sampling around the peak.
@@ -167,9 +174,14 @@ void corrTrackFast(TrackParams *trackPar)
 					r2 > 0 && r2 < trackPar->imageP2.nSlpR && a2 > 0 && a2 < trackPar->imageP2.nSlpA)
 				{
 					/* Read patches for amplitude match */
+					time1 = clock();
 					getCorrPatchesFast(r1, a1, r2, a2, fp1, fp2, trackPar, FALSE);
+					timeIO += (double)((clock()-time1))/(CLOCKS_PER_SEC);
 					/* Do the  match, load values to trackPar->offR/A/corr/type */
+					time1 = clock();
+					//fprintf(stderr, "%li", time1);
 					corrMatch(trackPar, tmpS1, tmpS2, i, j, rShift, aShift, &cMax);
+					timeMatch += (double)((clock()-time1))/(CLOCKS_PER_SEC);
 				}
 				else
 					cMax = 0.0; /* end if r1>0...*/
@@ -206,6 +218,13 @@ void corrTrackFast(TrackParams *trackPar)
 				100. * (double)(trackPar->nFail) / (double)(nTot),
 				cAvg, nMask, (int)(time(NULL) - lastTime));
 	} /* End for i=0... */
+	
+	fprintf(stderr, "\n\nTIO = %.3lf %.4lf\n", timeIO, timeIO/(timeIO+timeMatch));
+	fprintf(stderr, "TMatch = %.3lf %.4lf\n", timeMatch, timeMatch/(timeIO+timeMatch));
+	fprintf(stderr, "---------------------------\n");
+	fprintf(stderr,"timeStats %.3lf %.4lf\n", timeStats, timeStats/(timeIO+timeMatch));
+	fprintf(stderr,"timeFFT %.3lf %.4lf\n", timeFFT, timeFFT/(timeIO+timeMatch));
+	fprintf(stderr,"timeOver %.3lf %.4lf\n", timeOver, timeOver/(timeIO+timeMatch));
 	fclose(fpR);
 	fclose(fpA);
 	fclose(fpC);
@@ -439,17 +458,24 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 	int32_t i, j, i1, j1;
 	int32_t wR2, wA2;
 	double meanR, sigmaR;
-	
+	clock_t time1; 
 	double scaleW;
 	// size of search chip 
 	wR2 = (trackPar->wRa - 2 * trackPar->edgePadR) * OS;
 	wA2 = (trackPar->wAa - 2 * trackPar->edgePadA) * OS;
 	// Step 1: Compute mean/sigma for second image patch
+	time1 = clock();
 	computeMeanSigma(trackPar, &meanR,  &sigmaR, tmpS1, tmpS2);
+	timeStats += (double)((clock()-time1))/(CLOCKS_PER_SEC);
 	// Step 3, do fft convolution of image patchtes
+	time1 = clock();
 	ampMatchEdge(trackPar, &iMax, &jMax, &cM, FALSE);
+	timeFFT += (double)((clock()-time1))/(CLOCKS_PER_SEC);
 	// Step 4: find peak in correlation function
 	getPeakCorr(trackPar, &iMax, &jMax, meanR, sigmaR, &maxCorr);
+	timeFFT += (double)((clock()-time1))/(CLOCKS_PER_SEC);
+	//
+	time1 = clock();
 	// Return if no data
 	if (maxCorr < 0)
 		return;
@@ -467,6 +493,7 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 	}
 	// Step 6: Oversample correlation peak
 	overSampleC(trackPar);
+	
 	// Step 7: Find peak and renorm value
 	*cMax = -1.0e30;
 	for (i = ((NFAST+1) * NOVER) / 2 - NOVER * 2; i < ((NFAST+1) * NOVER) / 2 + NOVER * 2; i++)
@@ -481,6 +508,7 @@ static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2,
 			}
 		}
 	*cMax = sqrt(*cMax) / ( (NFAST+1) * (NFAST+1));	
+	timeOver += (double)((clock()-time1))/(CLOCKS_PER_SEC);
 	// Step 8: Compute raw, fractional pixel shift.
 	iMax = (iMax * NOVER) + iMax1 - (NOVER * (NFAST)) / 2;
 	jMax = (jMax * NOVER) + jMax1 - (NOVER * (NFAST)) / 2;
@@ -520,9 +548,20 @@ static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1
 		offset1 = ((off_t)a1a * nSlpR) * (off_t)sSize;
 		fseeko(fp, offset1, SEEK_SET);
 		if (trackPar->floatFlag == TRUE)
-			freadBS((void *)imageBuf->buf[0], sSize, s1, fp, FLOAT32FLAG);
+		{
+			if(trackPar->byteOrder == MSB)
+			{
+				freadBS((void *)imageBuf->buf[0], sSize, s1, fp, FLOAT32FLAG);
+			}
+			else
+			{
+				size_t rv = fread((void *)imageBuf->buf[0], sSize, s1, fp);
+			}
+		}	
 		else
+		{
 			freadBS((void *)imageBuf->buf[0], sSize, s1, fp, INT16FLAG);
+		}		
 		imageBuf->firstRow = a1a;
 		imageBuf->lastRow = a1a + min(nSlpA - a1a, NBUFFERLINES) - 1;
 	}
