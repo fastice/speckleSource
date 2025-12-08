@@ -45,11 +45,31 @@ int main(int argc, char *argv[])
 	*/
 	parseTrack(parFile, &trackPar);
 	fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
-	/*
-	  Parse image par files
-	*/
-	readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
-	readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+	// Parse First Image
+	fprintf(stderr, "%s  %s\n",trackPar.vrtFile1, trackPar.vrtFile2 );
+	if(trackPar.parFile1 != NULL) 
+	{
+		readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
+	} 
+	else if(trackPar.vrtFile1 != NULL)
+	{
+		parseSLCVrt(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder);
+	} 
+	else error("Could not read par or vrt file for image 1\n");
+
+	// Parse Second Image
+	if(trackPar.parFile2 != NULL) 
+	{
+		readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+	} 
+	else if(trackPar.vrtFile2 != NULL)
+	{
+		parseSLCVrt(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder);
+	}
+	else error("Could not read par or vrt file for image 1\n");
+	// Override command line/default if vrt specified 
+	if(byteOrder >= 0) trackPar.byteOrder = byteOrder;
+	//
 	fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	/*
 	   Parse initial offsets

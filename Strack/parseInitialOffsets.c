@@ -16,6 +16,15 @@ void parseInitialOffsets(TrackParams *trackPar)
     int32_t aDone, rDone;
     fprintf(stderr, "\nREADING INTIAL OFFSETS\n");
 
+    if(trackPar->polyShift == FALSE)
+    {
+        for(int i=0; i < 3; i++) 
+        {
+            trackPar->rShiftPoly[i] = 0.0;
+            trackPar->aShiftPoly[i] = 0.0;
+        }
+        return;
+    }
     if (trackPar->initialOffsetFile != NULL)
         fp = openInputFile(trackPar->initialOffsetFile);
     else

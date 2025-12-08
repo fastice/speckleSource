@@ -54,15 +54,34 @@ int main(int argc, char *argv[])
 	  Parse command file
 	*/
 	parseTrack(parFile, &trackPar);
+	// Parse First Image
+	fprintf(stderr, "%s  %s\n",trackPar.vrtFile1, trackPar.vrtFile2 );
+	if(trackPar.parFile1 != NULL) 
+	{
+		readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
+	} 
+	else if(trackPar.vrtFile1 != NULL)
+	{
+		parseSLCVrt(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder);
+	} 
+	else error("Could not read par or vrt file for image 1\n");
 
-	/*
-	  Parse image par files
-	*/
-	readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
-	readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+	// Parse Second Image
+	if(trackPar.parFile2 != NULL) 
+	{
+		readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+	} 
+	else if(trackPar.vrtFile2 != NULL)
+	{
+		parseSLCVrt(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder);
+	}
+	else error("Could not read par or vrt file for image 1\n");
+	// Override command line/default if vrt specified 
+	if(byteOrder >= 0) trackPar.byteOrder = byteOrder;
 	/*
 	   Parse baseline
 	*/
+	//error("STOP HERE");
 	parseBase(&trackPar);
 	/*
 	   Parse initial offsets
@@ -73,6 +92,7 @@ int main(int argc, char *argv[])
 	/*
 	  Get inteferogram
 	*/
+
 	if (trackPar.intFile != NULL)
 	{
 		if (trackPar.noComplex == FALSE)
@@ -91,19 +111,16 @@ int main(int argc, char *argv[])
 	{ /* Added 8/8/2016 for baseline only correction */
 		if (trackPar.intGeodat == NULL)
 			error("getInt: Missing geodat filename");
-		/*if(trackPar.noComplex==FALSE) {*/
 		inputImage.stateFlag = TRUE;
 		parseInputFile(trackPar.intGeodat, &inputImage);
 		trackPar.lambda = inputImage.par.lambda;
 		trackPar.latc = inputImage.latControlPoints[0];
-		/*}*/
 	}
 	/*
 	  Get mask
 	*/
 	if (trackPar.maskFile != NULL)
 		getMask(&trackPar);
-	fprintf(stderr, "C %s\n", trackPar.maskFile);
 	/*
 	  Do matching
 	*/
@@ -152,5 +169,5 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 
 static void usage()
 {
-	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning -LSB parFile \n\tLSB  use LSB for both output and flaoting point input\n ");
+	error("sTrack -noComplex -legacy -singleAmp -gauss -integerComplex -noHanning -LSB parFile \n\tLSB  use LSB for both output and floating point input\n ");
 }

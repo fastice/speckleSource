@@ -69,6 +69,7 @@ static void zeroPadFFT(fftw_complex **fftPad, int32_t pSA, int32_t pSR, fftw_com
 /* Legacy Code */
 static void cmpPSNoPad(TrackParams *trackPar);
 static void estCarrier(TrackParams *trackPar);
+static void estDopCarrier(TrackParams *trackPar, fftw_complex **f1, fftw_complex **f2, int32_t na, int32_t nr);
 static void estRangeCarrier(TrackParams *trackPar);
 static void azComputeAzShift(int32_t j, int32_t *prevShift, TrackParams *trackPar, double *cosShift, double *sinShift);
 /* Experimental code */
@@ -202,12 +203,13 @@ void speckleTrack(TrackParams *trackPar)
 			*/
 			if (boundsCheck(r1, a1, r2, a2, trackPar->wR, trackPar->wA, trackPar) && maskVal > 0 && trackPar->noComplex == FALSE)
 			{
-				
-				/* Read patches from image */
+				/* Read patches from image, note this will do carrier estimation even if no complex */
 				haveData = getPatches(r1, a1, r2, a2, fp1, fp2, trackPar);
 				/*  Estimate any doppler component in azimuth */
-				if (trackPar->legacyFlag == TRUE)
+				if (trackPar->legacyFlag == TRUE && haveData == TRUE)
+				{
 					azComputeAzShift(j, &prevShift, trackPar, cosShift, sinShift);
+				}
 				good = FALSE;
 				if (trackPar->noComplex == FALSE && haveData == TRUE)
 				{
@@ -915,6 +917,8 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 /*
   Read patches for amplitude matching
 */
+
+
 static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar, int32_t large)
 {
 	size_t offset1, offset2;
@@ -950,7 +954,7 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	nZero = 0;
 	if (a1 >= trackPar->imageP1.nSlpA || a2 >= trackPar->imageP2.nSlpA)
 	{
-		error("getpatches");
+		error("getAmppatches");
 		return (FALSE);
 	}
 	if (trackPar->floatFlag == TRUE)
@@ -1027,7 +1031,6 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	/* Forward FFT */
 	if (large == FALSE)
 	{
-		/*fprintf(stderr,"forward fft \n");*/
 		fftwnd_one(aForwardIn, im1in[0], f1[0]);
 		fftwnd_one(aForwardIn, im2in[0], f2[0]);
 	}
@@ -1036,15 +1039,27 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 		fftwnd_one(aForwardInL, im1in[0], f1[0]);
 		fftwnd_one(aForwardInL, im2in[0], f2[0]);
 	}
-	azShift = (int)((float)trackPar->azShift * (float)wAa / (float)trackPar->wA);
+	azShift = 0;  // Default
+	if(trackPar->legacyFlag == TRUE)
+	{
+		// If not computed for complex match, compute for smaller amp patch (12/3/25)
+		if(trackPar->noComplex == TRUE && large == FALSE) 
+		{
+			estDopCarrier(trackPar, f1, f2, trackPar->wAa, trackPar->wRa);
+		} 
+		// Scale offset for complex patch to current patch size
+		azShift = (int)((float)trackPar->azShift * (float)wAa / (float)trackPar->wA);
+	
+	}
+	// Not currently used
 	rangeShift = (int)((float)trackPar->rangeShift * (float)wRa / (float)trackPar->wR);
 	/*
 	  Zero pad fft for over sampling
 	*/
 	zeroComplex(f1a, wAa * OS, wRa * OS);
 	zeroComplex(f2a, wAa * OS, wRa * OS);
-	zeroPadFFT(f1a, wAa * OS, wRa * OS, f1, wAa, wRa, 0, 0);
-	zeroPadFFT(f2a, wAa * OS, wRa * OS, f2, wAa, wRa, 0, 0);
+	zeroPadFFT(f1a, wAa * OS, wRa * OS, f1, wAa, wRa, azShift, 0);
+	zeroPadFFT(f2a, wAa * OS, wRa * OS, f2, wAa, wRa, azShift, 0);
 	/* Inverse transform */
 	if (large == FALSE)
 	{
@@ -1200,14 +1215,17 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 	/*
 	   Legacy case. Oversample here and apply some other corrections.
 	*/
-	estCarrier(trackPar);
-	estRangeCarrier(trackPar);
+
 	/* Forward FFT */
 	fftwnd_one(cForwardIn, patch1in[0], fftF1os[0]);
 	fftwnd_one(cForwardIn, patch2in[0], fftF2os[0]);
+	// Carrier estimation
+	estDopCarrier(trackPar, fftF1os, fftF2os, trackPar->wA, trackPar->wR);
+	//estCarrier(trackPar);
+	estRangeCarrier(trackPar);
 	/* Zero arrays */
 	zeroPadFFT(fftF1, OSA * trackPar->wA, OSA * trackPar->wR, fftF1os, trackPar->wA, trackPar->wR, trackPar->azShift, trackPar->rangeShift);
-	zeroPadFFT(fftF2, OSA * trackPar->wA, OSA * trackPar->wR, fftF1os, trackPar->wA, trackPar->wR, trackPar->azShift, trackPar->rangeShift);
+	zeroPadFFT(fftF2, OSA * trackPar->wA, OSA * trackPar->wR, fftF2os, trackPar->wA, trackPar->wR, trackPar->azShift, trackPar->rangeShift);
 	/* Inverse fft */
 	fftwnd_one(trackPar->cReverseNoPad, fftF1[0], patch1[0]);
 	fftwnd_one(trackPar->cReverseNoPad, fftF2[0], patch2[0]);
@@ -1538,7 +1556,7 @@ static void mallocSpace(TrackParams *trackPar)
 	imageBuf2.lastRow = -1;
 	if (trackPar->floatFlag == TRUE)
 	{
-		fprintf(stderr, "Floating point32_t input \n");
+		fprintf(stderr, "float32_t input \n");
 		imageBuf1.buf = (void **)mallocfftw_complexMat(imageBuf1.na, imageBuf1.nr);
 		fftwTmp = (fftw_complex **)imageBuf1.buf;
 		for (i = 0; i < NBUFFERLINES; i++)
@@ -1559,7 +1577,7 @@ static void mallocSpace(TrackParams *trackPar)
 	}
 	else
 	{
-		fprintf(stderr, "Short int32_t input \n");
+		fprintf(stderr, "Integer input \n");
 		imageBuf1.buf = (void *)mallocErs1ComplexMat(imageBuf1.na, imageBuf1.nr);
 		ers1Tmp = (strackComplex **)imageBuf1.buf;
 		for (i = 0; i < NBUFFERLINES; i++)
@@ -2011,36 +2029,34 @@ static void azComputeAzShift(int32_t j, int32_t *prevShift, TrackParams *trackPa
 
   Modified 11/14/00 changed to look for min rather
   than max to ensure min gets moved to highend freqs.
+
+  Modified 12/3/25 to work for both amplitude & complex
 */
-static void estCarrier(TrackParams *trackPar)
+static void estDopCarrier(TrackParams *trackPar, fftw_complex **f1c, fftw_complex **f2c, int32_t na, int32_t nr)
 {
-	extern fftw_complex **patch1in, **patch2in;
-	extern fftw_complex **f1, **f2;
-	double sp, minS;
-	fftw_complex cgrad;
-	double angle;
-	int32_t iMin;
-	int32_t i, j;
-	fftw(trackPar->onedForward1, trackPar->wR, patch1in[0], trackPar->wR, 1, f1[0], trackPar->wR, 1);
-	fftw(trackPar->onedForward2, trackPar->wR, patch2in[0], trackPar->wR, 1, f2[0], trackPar->wR, 1);
-	minS = 2.0e30;
-	iMin = 0;
-	for (i = 0; i < trackPar->wA; i++)
+	double minS = 2.e30;
+	int32_t i, j, iMin;
+	for (i = 0; i < na; i++)
 	{
-		sp = 0.;
-		for (j = 0; j < trackPar->wR; j++)
-		{
-			sp += f1[i][j].re * f1[i][j].re + f1[i][j].im * f1[i][j].im;
-			sp += f2[i][j].re * f2[i][j].re + f2[i][j].im * f2[i][j].im;
+		float sp = 0.;
+		for (j = 0; j < nr; j++)
+		{	// sum power from both images, assuming same Dop, for each freq bin
+			sp += f1c[i][j].re * f1c[i][j].re + f1c[i][j].im * f1c[i][j].im;
+			sp += f2c[i][j].re * f2c[i][j].re + f2c[i][j].im * f2c[i][j].im;
 		}
+		// Compute min, which works better than max
 		if (sp < minS)
 		{
 			iMin = i;
 			minS = sp;
 		}
 	}
-	trackPar->azShift = (iMin + trackPar->wA / 2) % trackPar->wA;
-}
+	// This is the azShift for the amplitude patch
+	trackPar->azShift = (iMin + na / 2) % na;
+	// Normalize back to complex window size to be consistent with cmp case
+	// Will get renormalized for amplitude case
+	trackPar->azShift = (int)((float)trackPar->azShift * (float)trackPar->wA/(float)na);
+}	
 
 /* ************************ EXPERIMENTAL CODE ********************************/
 

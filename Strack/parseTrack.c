@@ -16,26 +16,43 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 	void *d2, *d3;
 	char *tmp;
 	int32_t sLen;
-	char buf[2048];
+	char buf[2048], vrtBuf[4096];
+	char *vrt; 
 	d2 = NULL;
 	d3 = NULL;
 	rdfParams = NULL;
 	rdfParams = rdfParse(parFile, rdfParams);
-	/*
-	  Image files
-	*/
-	if ((trackPar->imageFile1 = rdfValue(rdfParams, "image1")) == NULL)
+	//  First image and par file
+	if((trackPar->imageFile1 = rdfValue(rdfParams, "image1")) == NULL)
 		error("parseTrack: Missing image1");
-
+	vrtBuf[0] = '\0';
+	trackPar->vrtFile1 = checkForVrt(trackPar->imageFile1, vrtBuf);
+	if(trackPar->vrtFile1 != NULL)
+	{
+		trackPar->vrtFile1 = strdup(trackPar->vrtFile1);
+	} 
+	else
+	{
+		if ((trackPar->parFile1 = rdfValue(rdfParams, "image1par")) == NULL)
+			error("parseTrack: Missing image1par and no vrt");
+	}
+	// Second image and par file
 	if ((trackPar->imageFile2 = rdfValue(rdfParams, "image2")) == NULL)
 		error("parseTrack: Missing image2");
 
-	if ((trackPar->parFile1 = rdfValue(rdfParams, "image1par")) == NULL)
-		error("parseTrack: Missing image1par");
-
-	if ((trackPar->parFile2 = rdfValue(rdfParams, "image2par")) == NULL)
-		error("parseTrack: Missing image2par");
-	/* Read parameters for mask file */
+	vrtBuf[0] = '\0';
+	trackPar->vrtFile2 = checkForVrt(trackPar->imageFile2, vrtBuf);
+	if(trackPar->vrtFile2 != NULL)
+	{
+		trackPar->vrtFile2 = strdup(trackPar->vrtFile2);
+	} 
+	else
+	{
+		if ((trackPar->parFile2 = rdfValue(rdfParams, "image2par")) == NULL)
+			error("parseTrack: Missing image2par and no vrt");
+	}
+	
+	// Read parameters for mask file 
 	trackPar->maskFlag = FALSE;
 	if ((trackPar->maskFile = rdfValue(rdfParams, "maskfile")) != NULL)
 	{
@@ -68,8 +85,7 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 		trackPar->maskvrt = rdfValue(rdfParams, "offsetmaskvrt");
 	}
 
-	if ((trackPar->initialOffsetFile = rdfValue(rdfParams, "initialoffsetfile")) == NULL)
-		error("parseTrack: Missing initialoffsetfile");
+
 
 	trackPar->intGeodat = NULL;
 	trackPar->baseParams = NULL;
@@ -96,6 +112,8 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 	{
 		trackPar->polyShift = TRUE;
 		fprintf(stderr, "Polyshift = TRUE\n");
+		if ((trackPar->initialOffsetFile = rdfValue(rdfParams, "initialoffsetfile")) == NULL)
+			error("parseTrack: Missing initialoffsetfile");
 	}
 	else
 	{

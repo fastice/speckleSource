@@ -59,6 +59,8 @@ typedef struct
 	char *imageFile2;
 	char *parFile1; /* SLC par files */
 	char *parFile2;
+	char *vrtFile1;
+	char *vrtFile2;
 	char *intFile;
 	char *intGeodat;	   /* Geodat file for inteferogram */
 	char *initOffsetsFile; /* root name for initial offsets */

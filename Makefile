@@ -125,6 +125,7 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/outputGeocodedImage.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/parseInputFile.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/parseIrregFile.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/parseSLCvrt.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/polintVec.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/rangeAzimuthToLL.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOffsets.o \
