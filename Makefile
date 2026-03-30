@@ -96,6 +96,7 @@ ERS1CODEDIR =	ers1Code
 
 COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/bilinearInterp.o \
+	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/buffers.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeHeading.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computePhiZ.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeScale.o \
@@ -217,7 +218,8 @@ STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
         Strack/$(MACHTYPE)-$(OSTYPE)/parseBase.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/readBothOffsetsStrack.o \
-        Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
+        Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/dopplerEstimation.o
 
 STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common $(FFTHOME) \
 	$(PROGDIR)/rdfSource/rdfRoutines
@@ -243,7 +245,10 @@ STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/sTrackOut.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/readBothOffsetsStrack.o \
-	 	Strack/$(MACHTYPE)-$(OSTYPE)/getMask.o
+	 	Strack/$(MACHTYPE)-$(OSTYPE)/getMask.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/dopplerEstimation.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
+		
 
 STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common $(FFTHOME) \
 	$(PROGDIR)/rdfSource/rdfRoutines
@@ -257,8 +262,7 @@ strackw:
 		); done
 		g++ $(MEM)   $(CCFLAGS1) $(NOPIE) \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
-		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
-                -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strackw
+            -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strackw
 
 
 #******************************************************************************************************************

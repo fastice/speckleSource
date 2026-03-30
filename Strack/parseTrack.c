@@ -130,11 +130,13 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 		trackPar->outFileC = (char *)malloc(sizeof(char) * sLen + 4);
 		trackPar->outFileT = (char *)malloc(sizeof(char) * sLen + 4);
 		trackPar->outFileD = (char *)malloc(sizeof(char) * sLen + 5);
+		trackPar->outFileAzDefocus = (char *)malloc(sizeof(char) * sLen + 5);
 		trackPar->vrtFile = (char *)malloc(sizeof(char) * sLen + 5);
 		trackPar->MTvrtFile = (char *)malloc(sizeof(char) * sLen + 8);
 		strcpy(trackPar->outFileR, tmp);
 		strcpy(trackPar->outFileA, tmp);
 		strcpy(trackPar->outFileC, tmp);
+		strcpy(trackPar->outFileAzDefocus, tmp);
 		strcpy(trackPar->outFileT, tmp);
 		strcpy(trackPar->outFileD, tmp);
 		strcpy(trackPar->vrtFile, tmp);
@@ -144,6 +146,7 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 		strcat(trackPar->outFileC, ".cc");
 		strcat(trackPar->outFileT, ".mt");
 		strcat(trackPar->outFileD, ".dat");
+		strcat(trackPar->outFileAzDefocus, ".azd");
 		strcat(trackPar->vrtFile, ".vrt");
 		strcat(trackPar->MTvrtFile, ".mt.vrt");
 		fprintf(stderr, "Outfiles: %s\n%s\n%s\n%s\n%s\n%s\n",

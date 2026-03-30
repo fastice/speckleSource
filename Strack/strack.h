@@ -71,6 +71,7 @@ typedef struct
 	char *outFileC;		   /* Correlation ouput file */
 	char *outFileT;		   /* Match type ouput file */
 	char *outFileD;		   /* Header (.dat) file */
+	char *outFileAzDefocus; /* Azimuth defocus ouput file */
 	char *vrtFile;
 	char *MTvrtFile;
 	char *maskFile;
@@ -80,6 +81,8 @@ typedef struct
 	int32_t maskType;
 	FILE *fpI1; /* File pointers to images */
 	FILE *fpI2;
+	GDALRasterBandH hBand1;
+	GDALRasterBandH hBand2;
 	SARData imageP1; /* SLC parameters */
 	SARData imageP2;
 	int32_t noComplex; /* Amp only flag */
@@ -141,6 +144,7 @@ typedef struct
 	float **offR;
 	float **offA;
 	float **corr;
+	float **aZDefocus;
 	char **type;
 	/* Stats */
 	int32_t nComplex;
@@ -153,9 +157,11 @@ typedef struct
 	int32_t legacyFlag;
 	int32_t gaussFlag;
 	double latc;
+	float azDefocusThresh;
 	int32_t osF; /* azimuth oversample */
 	int32_t maxTries;
 	int32_t byteOrder;
+	int32_t checkAzFocus;
 } TrackParams;
 
 void parseTrack(char *parFile, TrackParams *trackPar);
@@ -163,7 +169,7 @@ void parseBase(TrackParams *trackPar);
 void parseInitialOffsets(TrackParams *trackPar);
 void speckleTrack(TrackParams *trackPar);
 void sTrackOut(TrackParams *trackPar);
-void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpT);
+void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpAzD, FILE *fpT);
 void getInt(TrackParams *trackPar);
 void getMask(TrackParams *trackPar);
 void writeVrtFile(TrackParams *trackPar);
@@ -171,3 +177,4 @@ void writeVrtFile(TrackParams *trackPar);
  //                   int dataTypes[], char *byteSwapOption, int32_t nBands);
 int readBothOffsetsStrackVrt(Offsets *offsets, char *vrtFile);
 void readBothOffsetsStrack(Offsets *offsets);
+void estDopCarrier1(TrackParams *trackPar,  fftw_complex **image1, fftw_complex **image2, int32_t nAz, int32_t nRg);

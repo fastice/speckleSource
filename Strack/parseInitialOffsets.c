@@ -23,6 +23,7 @@ void parseInitialOffsets(TrackParams *trackPar)
             trackPar->rShiftPoly[i] = 0.0;
             trackPar->aShiftPoly[i] = 0.0;
         }
+        fprintf(stderr, "No polynomial shift specified, using zero shift\n");
         return;
     }
     if (trackPar->initialOffsetFile != NULL)

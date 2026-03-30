@@ -42,7 +42,10 @@ static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_
 static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA, int32_t edgePadR, 
 						int32_t edgePadA, float scale, TrackParams *trackPar, int32_t largePatch);
 static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1, int32_t sSize, FILE *fp);
+static void updateSLCBufferVRT(int32_t bufferNum, TrackParams *trackPar,
+                            int32_t a1, int32_t sSize, GDALRasterBandH hBand);
 static void getPeakCorr(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double meanR, double sigmaR, double *maxCorr);
+static void openStrackWFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar);
 static void getInitialGuess(TrackParams *trackPar);
 /* ************************ GLOBAL VARIABLES ***************************/
 fftw_complex **patch1in, **patch2in; /* ... */
@@ -126,13 +129,7 @@ void corrTrackFast(TrackParams *trackPar)
 	fprintf(stderr, "Search Radius with PAD %i %i\n", trackPar->edgePadR, trackPar->edgePadA);
 	fprintf(stderr, "wR2,wA2 %i %i\n", wR2 / 2, wA2 / 2);
 	// Open output files
-	fpR = fopen(trackPar->outFileR, "w");
-	fpA = fopen(trackPar->outFileA, "w");
-	fpC = fopen(trackPar->outFileC, "w");
-	fpT = fopen(trackPar->outFileT, "w");
-	// Open input files
-	fp1 = openInputFile(trackPar->imageFile1);
-	fp2 = openInputFile(trackPar->imageFile2);
+	openStrackWFiles(&fpR, &fpA, &fpC, &fpT, &fp1, &fp2, trackPar);
 	// FFTW Plan
 	fprintf(stderr, "Plans\n");
 	fftCorrPlans(trackPar);
@@ -201,7 +198,7 @@ void corrTrackFast(TrackParams *trackPar)
 				trackPar->type[i][j] = 0;
 			} /* end if maskVal..*/
 		} // End range loop
-		writeOffsets(i, trackPar, fpR, fpA, fpC, fpT);
+		writeOffsets(i, trackPar, fpR, fpA, fpC, NULL, fpT);
 		// Update stats
 		nTot = (i + 1) * trackPar->nR;
 		if (nGood > 0)
@@ -231,6 +228,29 @@ void corrTrackFast(TrackParams *trackPar)
 	fclose(fpT);
 	writeDatFile(trackPar);
 	writeVrtFile(trackPar);
+}
+
+
+static void openStrackWFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar)
+{
+	*fpR = fopen(trackPar->outFileR, "w");
+	*fpA = fopen(trackPar->outFileA, "w");
+	*fpC = fopen(trackPar->outFileC, "w");
+	//*fpAzD = fopen(trackPar->outFileAzDefocus, "w");
+	*fpT = fopen(trackPar->outFileT, "w");
+	/*
+		  Open input files
+	*/
+	if (trackPar->hBand1 == NULL)
+	{
+		trackPar->fpI1 = openInputFile(trackPar->imageFile1);
+		*fp1 = trackPar->fpI1;
+	} 
+	if (trackPar->hBand2 == NULL)
+	{
+		trackPar->fpI2 = openInputFile(trackPar->imageFile2);
+		*fp2 = trackPar->fpI2;
+	}
 }
 
 // Find inital shift  
@@ -271,6 +291,8 @@ static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t
 		*a2 = a1 + (int)(aShift - 0.5);
 }
 
+
+
 //  Read patches
 //  It reads the full size patch for image 2, so that subsequent programs
 //  will just read the relevant patch when needed.
@@ -292,9 +314,13 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 		error("getCorrPatchesFast");
 		return (FALSE);
 	}
+	
 	/* set points to buffer for image 1 and image 2*/
 	wAa = trackPar->wAa;
 	wRa = trackPar->wRa;
+	// Force this so renormalization of carrier works correctly
+	trackPar->wR = wRa;
+	trackPar->wA = wAa;
 	if (trackPar->floatFlag == TRUE)
 		sSize = sizeof(fftw_complex);
 	else
@@ -307,10 +333,18 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 	scale = 1. / ((float)wRa * (float)wAa * (float)wRa * (float)wAa *
 				  (float)(OS * OS * OS * OS) * (OS * OS * (trackPar->navgA + 1) * (trackPar->navgR + 1)));		  
 	//  Load buffers if needed (only required if patch is outside buffer)
-	updateSLCBuffer(1, trackPar, a1, sSize, fp1);
-	updateSLCBuffer(2, trackPar, a2, sSize, fp2);
+	if(trackPar->hBand1 == NULL) 
+		{updateSLCBuffer(1, trackPar, a1, sSize, fp1);} 
+	else
+		{updateSLCBufferVRT(1, trackPar, a1, sSize, trackPar->hBand1);} // VRT case - buffer updated in getComplexData
+
+	if(trackPar->hBand2 == NULL) 
+		{updateSLCBuffer(2, trackPar, a2, sSize, fp2);} 
+	else
+		{updateSLCBufferVRT(2, trackPar, a2, sSize, trackPar->hBand2);} // VRT case - buffer updated in getComplexData
 	// Get complex data
 	getComplexData(a1, a2, r1, r2, img1in, img2in, trackPar);
+	estDopCarrier1(trackPar, img1in, img2in, wAa, wRa);
 	// Forward FFT 
 	fftwnd_one(aForwardIn, img1in[0], fftFa1os[0]);
 	fftwnd_one(aForwardIn, img2in[0], fftFa2os[0]);
@@ -568,6 +602,65 @@ static void updateSLCBuffer(int32_t bufferNum, TrackParams *trackPar, int32_t a1
 }
 
 
+static void updateSLCBufferVRT(int32_t bufferNum, TrackParams *trackPar,
+                            int32_t a1, int32_t sSize, GDALRasterBandH hBand)
+{
+    extern StrackBuf imageBuf1;
+    extern StrackBuf imageBuf2;
+
+    StrackBuf *imageBuf;
+    int32_t nSlpA, nSlpR, a1a;
+    int32_t nLinesToRead;
+    GDALDataType myType = GDT_Unknown;
+    CPLErr err;
+
+    /* Select buffer */
+    if (bufferNum == 1)
+    {
+        imageBuf = &imageBuf1;
+        nSlpA = trackPar->imageP1.nSlpA;
+        nSlpR = trackPar->imageP1.nSlpR;
+    }
+    else if (bufferNum == 2)
+    {
+        imageBuf = &imageBuf2;
+        nSlpA = trackPar->imageP2.nSlpA;
+        nSlpR = trackPar->imageP2.nSlpR;
+    }
+    else
+    {
+        error("INVALID BUFFER");
+        return;
+    }
+    /* Load buffer if requested region is outside current buffer */
+    if (a1 < imageBuf->firstRow || (a1 + trackPar->wAa) > imageBuf->lastRow)
+    {
+        a1a = max(0, a1 - trackPar->wAa);
+        nLinesToRead = min(nSlpA - a1a, NBUFFERLINES);
+
+        if (sSize == sizeof(fftw_complex))
+            myType = GDT_CFloat32;
+        else if(sSize == 4)
+            myType = GDT_CInt16;
+        else
+            error("Unsupported complex sample size");
+
+        err = GDALRasterIO(hBand, GF_Read,
+                           0, a1a,                 /* x offset, y offset */
+                           nSlpR, nLinesToRead,    /* x size, y size in file */
+                           (void *)imageBuf->buf[0],
+                           nSlpR, nLinesToRead,    /* x size, y size in buffer */
+                           myType,
+                           0, 0);
+
+        if (err != CE_None)
+            error("GDALRasterIO failed");
+
+        imageBuf->firstRow = a1a;
+        imageBuf->lastRow  = a1a + nLinesToRead - 1;
+    }
+}
+
 // Mv data from buffer to input image patches
 static void getComplexData(int32_t a1, int32_t a2, int32_t r1, int32_t r2, fftw_complex **im1in,
 						   fftw_complex **im2in, TrackParams *trackPar)
@@ -640,11 +733,13 @@ static void zeroPad(fftw_complex **f1, fftw_complex **f2, fftw_complex **f1a, ff
 		}
 	}
 	// Fill the corners
+	int da = trackPar->azShift;
+	if(da < 0 || da >= wAa) da=0; /* Just in case, but should not happen */
 	for (i = 0; i < wAa / 2; i++)
 	{
 		i1 = OS * wAa - wAa / OS + i;
-		i2 = (wAa / OS + i) % wAa;
-		ia = i % wAa;
+		i2 = (wAa / OS + i + da) % wAa;
+		ia = (i + da) % wAa;
 		j1 = wRa * OS - wRa / OS;
 		j2 = wRa / OS;
 		for (j = 0; j < wRa / 2; j++)

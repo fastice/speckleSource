@@ -12,7 +12,7 @@
 /*#define NOVER 10
 #define NFAST 16
 */
-#define NOVER 10
+#define NOVER 12
 #define NFAST 8
 #define INTPATCHSIZE 8
 #define LA 2
@@ -22,11 +22,13 @@
 #define AMPMATCHLARGE 3
 #define NBUFFERLINES 1000
 #define FFTWPLANMODE FFTW_ESTIMATE
-#define OS 2 /* Amplitude oversample factor */
-#define OSA 2
-
-static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large);
-static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, double p1, double p2, int32_t large);
+#define OS 2 /* Over sample factor for cmpx match */
+#define OSA 2 /* Amplitude oversample factor */
+#define AZ 1
+#define RG 2 
+#define NGAUSS 18
+static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large, int32_t iOut, int32_t jOut);
+static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, double p1, double p2, int32_t large, int32_t iOut, int32_t jOut);
 static void cmpPSWithPad(TrackParams *trackPar);
 static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax);
 static void finalizeCmpxMatch(double cMax, int32_t iMax, int32_t jMax, double wRover2exp, double wAover2exp,
@@ -41,13 +43,15 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1);
 static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar, int32_t large);
 static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar);
 static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trackPar, int32_t a1, int32_t wAa, size_t sSize, FILE *fp1);
-static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar);
+static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
+                          SARData *imageP1, TrackParams *trackPar,
+                          int32_t a1, int32_t wAa, size_t sSize);
+static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC,  FILE **fpAZD, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar);
 void printLineSummary(int32_t nTot, int32_t a1, double cAvg, double cAvgAmp, int32_t nMask, time_t lastTime,
 					  time_t startTime, TrackParams *trackPar);
 static void writeDatFile(TrackParams *trackPar);
 /* Setup code */
 static void clearTrackParBuffs(TrackParams *trackPar);
-static void computeSinShift(double **sinShift, double **cosShift, TrackParams *trackPar);
 static void fftPlans(TrackParams *trackPar);
 static void initPhaseCorrect(TrackParams *trackPar);
 static void mallocSpace(TrackParams *trackPar);
@@ -66,21 +70,20 @@ static strackComplex **mallocErs1ComplexMat(int32_t nA, int32_t nR);
 static void zeroComplex(fftw_complex **fft, int32_t na, int32_t nr);
 static void zeroFloat(float **x, int32_t na, int32_t nr);
 static void zeroPadFFT(fftw_complex **fftPad, int32_t pSA, int32_t pSR, fftw_complex **fftOrig, int32_t oSA, int32_t oSR, int32_t dA, int32_t dR);
-/* Legacy Code */
-static void cmpPSNoPad(TrackParams *trackPar);
-static void estCarrier(TrackParams *trackPar);
-static void estDopCarrier(TrackParams *trackPar, fftw_complex **f1, fftw_complex **f2, int32_t na, int32_t nr);
-static void estRangeCarrier(TrackParams *trackPar);
-static void azComputeAzShift(int32_t j, int32_t *prevShift, TrackParams *trackPar, double *cosShift, double *sinShift);
+static int32_t complexMatch(TrackParams *trackPar, int32_t r1, int32_t a1, int32_t *iMax, int32_t *jMax,
+				  double *cMax, float *rShift1, float *aShift1, double *cAvg, int32_t *nCorr, int32_t iOut, int32_t jOut);
 /* Experimental code */
-static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax);
+static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t wR, int32_t wA, float **cFunc, double p1, double p2, int32_t isComplex, int32_t widthScale);
 static void myGauss(xyData x, float a[], float *y, float dyda[], int32_t na);
+static void myGauss1D(xyData x, float a[], float *y, float dyda[], int32_t na);
 void mrqcofMod(xyData x[], float y[], float sig[], int32_t ndata, float a[], int32_t ia[],
 			   int32_t ma, float **alpha, float beta[], float *chisq,
-			   void (*funcs)(xyData, float[], float *, float[], int));
+			   void (*funcs)(xyData x, float[], float *, float[], int));
 void mrqminMod(xyData x[], float y[], float sig[], int32_t ndata, float a[], int32_t ia[],
 			   int32_t ma, float **covar, float **alpha, float *chisq,
-			   void (*funcs)(xyData, float[], float *, float[], int), float *alamda);
+			   void (*funcs)(xyData x, float[], float *, float[], int), float *alamda);
+
+static void gaussPeak1D(TrackParams *trackPar, float **cMag, int32_t iMax, int32_t jMax, double cMax, int AzOrRg, float *sigma, float *peakRatio);
 
 /* ************************ GLOBAL VARIABLES ***************************/
 fftw_complex **fftF1, **fftF2; /* FFt's */
@@ -129,48 +132,63 @@ fftwnd_plan aForwardInL;
 fftw_complex **fftFa1os, **fftFa1Los, **fftFa2os, **fftFa2Los; /*  ^^^ */
 fftwnd_plan cForwardIn;										   /* ... */
 fftw_complex **fftF1os, **fftF2os;							   /* ... */
+
+/* ANSI C (C89) */
+#include <math.h>
+#include <float.h>
+
+#ifndef MAX
+#define MAX(a,b) ((a)>(b)?(a):(b))
+#endif
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+
+static void computeAmpImageLocations(TrackParams *trackPar, int32_t i, int32_t j,
+								  int32_t *r1a, int32_t *a1a, int32_t *r2a, int32_t *a2a,
+								  int32_t rShift, int32_t aShift,
+								  int32_t wA, int32_t wR, int32_t ampWScale)
+{
+			*a1a = trackPar->aStart + i * trackPar->deltaA - wA / 2 * ampWScale;
+			*r1a = trackPar->rStart + j * trackPar->deltaR - wR / 2 * ampWScale;
+			*r2a = *r1a + rShift;
+			*a2a = *a1a + aShift;
+}
+
 /* ********************************************************************/
 void speckleTrack(TrackParams *trackPar)
 {
+	extern float **cNoPadMag;
 	time_t lastTime, myStart;
-	FILE *fp1, *fp2, *fpR, *fpA, *fpC, *fpT;
-	double *cosShift, *sinShift;
+	FILE *fp1, *fp2, *fpR, *fpA, *fpC, *fpT, *fpAzD;
 	double cMax, cAvg, cAvgAmp;
-	double wRover2exp, wAover2exp, invNOVER, cThresh;
-	float rShift, aShift, rShift1, aShift1;
-	int32_t nTot, nCorr, nSkip, patchFlag, ampType;
-	int32_t good, type, haveData, nMask, *nAmp, nAmpLine;
+	double wRover2exp, wAover2exp, cThresh;
+	double invNOVER = 1.0 / (float)NOVER;
+	float rShift, aShift, rShift1, aShift1, rShiftAmp, aShiftAmp;
+	float sigmaAz, sigmaRg;
+	float peakRatioAz, peakRatioRg;
+	int32_t nTot=0, nCorr, nSkip, patchFlag, ampType;
+	int32_t good, type, haveData, nMask=0, *nAmp, nAmpLine;
 	int32_t i, j, r1, a1, r2, a2;
 	int32_t r1a, a1a, r2a, a2a, jMax, iMax;
-	int32_t prevShift, nTries, ampWScale, maskVal, large; /* Flag to determine whether to match */
+	int32_t prevShift = -1, nTries, ampWScale, maskVal, large; /* Flag to determine whether to match */
 	fprintf(stderr, "\nSPECKLE TRACKING\n");
-	if (trackPar->legacyFlag == TRUE)
-		trackPar->osF = OSA;
-	else
-		trackPar->osF = 1; /* Adjust cmpx over sample depending on mode */
+	trackPar->osF = 1; /* Adjust cmpx over sample depending on mode */
 	fprintf(stderr, "%li %li \n", (long) sizeof(fftw_real), (long) sizeof(fftw_complex));
 	/*     Malloc space 	*/
 	mallocSpace(trackPar);
 	/* OPen files */
-	openStrackFiles(&fpR, &fpA, &fpC, &fpT, &fp1, &fp2, trackPar);
-	/* Init sin/cos shift ??? */
-	computeSinShift(&sinShift, &cosShift, trackPar);
+	openStrackFiles(&fpR, &fpA, &fpC, &fpAzD, &fpT, &fp1, &fp2, trackPar);
 	/*  Compute plan for ffts and hanning window */
 	fftPlans(trackPar);
 	if (trackPar->hanningFlag == TRUE && trackPar->noComplex == FALSE)
 		computeHanning(trackPar);
 	/*  Initializations	*/
-	wRover2exp = trackPar->wR / 2. * NOVER * OSA;
-	wAover2exp = trackPar->wA / 2. * NOVER * OSA;
-	invNOVER = 1.0 / (float)NOVER;
 	trackParInits(trackPar);
 	clearTrackParBuffs(trackPar); /* clear buffers before starting */
 	/*
 	  Loop to do matching
 	*/
-	prevShift = -1;
-	nMask = 0;
-	nTot = 0;
 	trackPar->azShift = 0;
 	myStart = time(NULL);
 	for (i = 0; i < trackPar->nA; i++)
@@ -187,63 +205,47 @@ void speckleTrack(TrackParams *trackPar)
 			haveData = TRUE;
 			cMax = 0.;
 			type = BAD;
-			r1 = trackPar->rStart + j * trackPar->deltaR - trackPar->wR / 2;
 			/* Find position for second image */
+			r1 = trackPar->rStart + j * trackPar->deltaR - trackPar->wR / 2;
 			findImage2Pos(r1, a1, trackPar, &r2, &a2);
-			rShift = (r2 - r1);
-			aShift = (a2 - a1);
-			
+			// Save for amp match	
+			rShiftAmp = (r2 - r1);
+			aShiftAmp = (a2 - a1);
 			/* returns 1 if no mask available, 0 or 1 with mask */
 			maskVal = maskValue(trackPar, r1 * trackPar->scaleFactor, a1 * trackPar->scaleFactor);
-			if (maskVal > 1)
-				maskVal = 1; /* This is because I may put larger values in mask for runcull */
+			maskVal = min(maskVal, 1); /* This is because I may put larger values in mask for runcull */
 			nMask += maskVal;
 			/*
 			   Complex matching
 			*/
-			if (boundsCheck(r1, a1, r2, a2, trackPar->wR, trackPar->wA, trackPar) && maskVal > 0 && trackPar->noComplex == FALSE)
+			good = FALSE;
+			if (boundsCheck(r1, a1, r2, a2, trackPar->wR, trackPar->wA, trackPar) && (maskVal > 0) && (trackPar->noComplex == FALSE))
 			{
 				/* Read patches from image, note this will do carrier estimation even if no complex */
 				haveData = getPatches(r1, a1, r2, a2, fp1, fp2, trackPar);
-				/*  Estimate any doppler component in azimuth */
-				if (trackPar->legacyFlag == TRUE && haveData == TRUE)
-				{
-					azComputeAzShift(j, &prevShift, trackPar, cosShift, sinShift);
-				}
+				// fprintf(stderr, "%i %i %i %i %i\n", haveData, r1, a1, r2, a2);
 				good = FALSE;
 				if (trackPar->noComplex == FALSE && haveData == TRUE)
 				{
-					phaseCorrectBaseline(trackPar, r1, a1); /* Phase correction with baseline  if present */
-					phaseCorrectInt(trackPar, r1, a1);		/* Phase correction with interferogram if present */
-					/* Compute initial cross correlation */
-					if (trackPar->legacyFlag == TRUE)
-						cmpPSNoPad(trackPar);
-					else
-						cmpPSWithPad(trackPar);
-					/* Oversample peak; with oversamping or gaussian */
-					if (trackPar->gaussFlag == TRUE)
-						cmpTrackGauss(trackPar, &iMax, &jMax, &cMax);
-					else
-						cmpTrackFast(trackPar, &iMax, &jMax, &cMax);
-					good = -1;
-					finalizeCmpxMatch(cMax, iMax, jMax, wRover2exp, wAover2exp, invNOVER,
-									  trackPar, &good, &type, &rShift1, &aShift1, &cAvg, &nCorr);
-					
+					good = complexMatch(trackPar, r1, a1, &iMax, &jMax, &cMax, &rShift1, &aShift1, &cAvg, &nCorr, i, j);
+					if(good == TRUE)
+					{
+						type = CMATCH;
+					}
 				}
 				else
 				{
 					if (haveData == FALSE)
 						nSkip++;
 				}
-			}
-			else
-				good = FALSE;
+			}		
 			/*
 			  Amplitude matching
 			*/
 			nTries = 0; /* Counter for diff amp windows, should not exceed 2 */
 			while (good == FALSE && haveData == TRUE && maskVal > 0 && nTries < trackPar->maxTries)
 			{
+				// Set up for different amp match windows depending on try number, and save some stats for summary at end of line
 				if (nTries == 0)
 				{
 					large = FALSE;
@@ -260,17 +262,14 @@ void speckleTrack(TrackParams *trackPar)
 					nAmp = &(trackPar->nAmpL);
 					cThresh = 0.028;
 				}
-				a1a = trackPar->aStart + i * trackPar->deltaA - trackPar->wAa / 2 * ampWScale;
-				r1a = trackPar->rStart + j * trackPar->deltaR - trackPar->wRa / 2 * ampWScale;
-				r2a = r1a + (r2 - r1);
-				a2a = a1a + (a2 - a1);
-				
+				computeAmpImageLocations(trackPar, i, j, &r1a, &a1a, &r2a, &a2a, rShiftAmp, aShiftAmp, trackPar->wA, trackPar->wR, ampWScale);
 				if (boundsCheck(r1a, a1a, r2a, a2a, trackPar->wRa * ampWScale, trackPar->wAa * ampWScale, trackPar) && maskVal > 0)
 				{
 					haveData = getAmpPatches(r1a, a1a, r2a, a2a, fp1, fp2, trackPar, large);
 					if (haveData == TRUE)
-					{
-						ampMatch(trackPar, &iMax, &jMax, &cMax, large);
+					{	
+						//fprintf(stderr, "\nTrying amp match with window %i for line %i pixel %i %i\n", ampWScale, i, j, large);
+						ampMatch(trackPar, &iMax, &jMax, &cMax, large, i, j);
 						rShift1 = ((float)jMax - trackPar->wRa * 0.5 * OS * NOVER * ampWScale) * invNOVER / OS;
 						aShift1 = ((float)iMax - trackPar->wAa * 0.5 * OS * NOVER * ampWScale) * invNOVER / OS;
 					}
@@ -281,7 +280,12 @@ void speckleTrack(TrackParams *trackPar)
 					}
 				}
 				else
-					cMax = 0.0;
+				{
+					cMax = 0.0;		
+				}
+				// If match in valid range, save it	
+				//fprintf(stderr, "j : %i %f %f %f %f %f\n", j, rShift1, aShift1,  
+				//0.15 * trackPar->wRa * OS * ampWScale, 0.15 * trackPar->wAa * OS * ampWScale, cMax	);
 				if (fabs((double)rShift1) < 0.15 * trackPar->wRa * OS * ampWScale &&
 					fabs((double)aShift1) < 0.15 * trackPar->wAa * OS * ampWScale && cMax > cThresh)
 				{
@@ -292,11 +296,12 @@ void speckleTrack(TrackParams *trackPar)
 					nAmpLine++;
 				}
 				nTries++;
-			}
+			} /* End while to attempt amp match*/
+			// Now process match results, if good save shifts, if not save large negative number and increment fail counter if data was present
 			if (good == TRUE && maskVal > 0)
 			{
-				rShift -= rShift1;
-				aShift -= aShift1;
+				rShift = rShiftAmp - rShift1;
+				aShift = aShiftAmp - aShift1;
 			}
 			else
 			{
@@ -306,6 +311,7 @@ void speckleTrack(TrackParams *trackPar)
 					trackPar->nFail++;
 			}
 			/* Save values */
+			//fprintf(stderr, "-----Line %i pixel %i type %i rShift %f aShift %f cMax %f %f %f\n", i, j, type, rShift, aShift, cMax, rShiftAmp, aShiftAmp	);
 			trackPar->offR[i][j] = rShift;
 			trackPar->offA[i][j] = aShift;
 			if (rShift > -100000)
@@ -316,7 +322,7 @@ void speckleTrack(TrackParams *trackPar)
 			trackPar->corr[i][j] = cMax; /*cMax;*/
 			trackPar->type[i][j] = type; /*cMax;*/
 		}								 /* End for j=0... */
-		writeOffsets(i, trackPar, fpR, fpA, fpC, fpT);
+		writeOffsets(i, trackPar, fpR, fpA, fpC, fpAzD, fpT);
 		nTot += (trackPar->nR - nSkip);
 		if (nCorr > 0)
 		{
@@ -329,7 +335,6 @@ void speckleTrack(TrackParams *trackPar)
 		else
 			cAvgAmp = 0.0;
 		printLineSummary(nTot, a1, cAvg, cAvgAmp, nMask, lastTime, myStart, trackPar);
-		//error("STOP");
 	} /* End for i=0... */
 	fprintf(stderr, "\n\nTotal time %f\n", (time(NULL) - myStart) / 60.);
 	fclose(fpR);
@@ -341,11 +346,56 @@ void speckleTrack(TrackParams *trackPar)
 }
 
 /**************************** Matching Code ***************************************/
-
+static int32_t complexMatch(TrackParams *trackPar, int32_t r1, int32_t a1, int32_t *iMax, int32_t *jMax,
+				  double *cMax, float *rShift1, float *aShift1, double *cAvg, int32_t *nCorr, int32_t iOut, int32_t jOut)
+{
+	extern fftw_complex **cNoPad;
+	extern fftw_complex **psNoPad;
+	extern float **cNoPadMag;
+	float sigmaRg, sigmaAz;
+	float peakRatioRg, peakRatioAz;
+	double wRover2exp, wAover2exp, invNOVER;	
+	int32_t good, type;
+	invNOVER = 1.0 / (float)NOVER;
+	wRover2exp = trackPar->wR / 2. * NOVER * OSA;
+	wAover2exp = trackPar->wA / 2. * NOVER * OSA;
+	phaseCorrectBaseline(trackPar, r1, a1); /* Phase correction with baseline  if present */
+	phaseCorrectInt(trackPar, r1, a1);		/* Phase correction with interferogram if present */
+	/* Compute initial cross correlation */
+	cmpPSWithPad(trackPar);
+	/* Oversample peak; with oversamping or gaussian */
+	if (trackPar->gaussFlag == TRUE)
+	{
+		fftwnd_one(trackPar->cReverseNoPad, psNoPad[0], cNoPad[0]);
+		findCPeak(cNoPadMag, cNoPad, trackPar->wR * OS, trackPar->wA * OS, iMax, jMax, cMax);
+		cmpTrackGauss(trackPar, iMax, jMax, cMax, trackPar->wR, trackPar->wA, cNoPadMag, trackPar->p1, trackPar->p2, TRUE, 1);
+	}			
+	else
+	{   // Standard oversampling mode	
+		cmpTrackFast(trackPar, iMax, jMax, cMax);
+	}
+	good = FALSE;
+	int32_t iM =  lround(*iMax/NOVER);
+	int32_t jM =  lround(*jMax/NOVER);
+	trackPar->aZDefocus[iOut][jOut] = -LARGEINT;
+	if((iM - NGAUSS/2) >= 0 && (iM + NGAUSS/2) < (trackPar->wA * OS) &&
+		(jM - NGAUSS/2) >= 0 && (jM + NGAUSS/2) < (trackPar->wR * OS))
+	{
+		gaussPeak1D(trackPar, cNoPadMag, iM, jM, *cMax, RG, &sigmaRg, &peakRatioRg);	
+		gaussPeak1D(trackPar, cNoPadMag, iM, jM, *cMax, AZ, &sigmaAz, &peakRatioAz);
+		//fprintf(stderr, "\n\nLine %i Pixel %i Complex match sigmaRg %f sigmaAz %f peakRatioRg %f peakRatioAz %f\n\n", iOut, jOut, sigmaRg, sigmaAz, peakRatioRg, peakRatioAz);	
+		trackPar->aZDefocus[iOut][jOut] = sigmaAz/sigmaRg;
+		if(fabs(trackPar->aZDefocus[iOut][jOut]) < trackPar->azDefocusThresh || trackPar->checkAzFocus == FALSE) {
+			finalizeCmpxMatch(*cMax, *iMax, *jMax, wRover2exp, wAover2exp, invNOVER,
+							trackPar, &good, &type, rShift1, aShift1, cAvg, nCorr);
+		} 
+	}
+	return good;
+}
 /*
    Main part of amplitude matching.
  */
-static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large)
+static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t large, int32_t iOut, int32_t jOut)
 {
 	extern fftwnd_plan aForward;
 	extern fftwnd_plan aForwardL;
@@ -430,13 +480,13 @@ static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double
 		i1++;
 	} /* End for i */
 	/*  Step 5 Compute correlation fuction and find peak	*/
-	ampTrackFast(trackPar, iMax, jMax, cMax, p1, p2, large);
+	ampTrackFast(trackPar, iMax, jMax, cMax, p1, p2, large, iOut, jOut);
 }
 
 /*
    Compute Correlation
  */
-static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, double p1, double p2, int32_t large)
+static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, double p1, double p2, int32_t large, int32_t iOut, int32_t jOut)
 {
 	extern fftw_complex **psAmpNoPad;
 	extern fftw_complex **psAmpNoPadL;
@@ -452,9 +502,12 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	fftw_complex **caNoP;
 	FILE *fp1;
 	float **caNoPadM;
-	double corr;
+	float sigmaAz, sigmaRg;
+	float peakRatioAz, peakRatioRg, cMaxTmp;
+	double corr, pScale;
 	int32_t i, j, i1, j1, iMax1, jMax1;
 	int32_t wA, wR;
+	//fprintf(stderr, "ENtring ampTrackFast with large %i\n", large);
 	if (large == TRUE)
 	{
 		psANoPad = psAmpNoPadL;
@@ -478,10 +531,30 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	/* FFT to get correlation function	*/
 	fftwnd_one(*aReverseNP, psANoPad[0], caNoP[0]);
 	/* Find the peak */
-	findCPeak(caNoPadM, caNoP, wR * OS, wA * OS, iMax, jMax, cMax);
+	findCPeak(caNoPadM, caNoP, wR * OSA, wA * OSA, iMax, jMax, cMax);
+	// 
+	//fprintf(stderr, " Amp match peak at i %i j %i cMax %f\n", *iMax, *jMax, *cMax); 
+	trackPar->aZDefocus[i][j] = -LARGEINT;
+	if(*iMax > NGAUSS/2 && *iMax < (wA * OSA - NGAUSS/2) &&
+	   *jMax > NGAUSS/2 && *jMax < (wR * OSA - NGAUSS/2))
+	{
+		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, RG, &sigmaRg, &peakRatioRg);	
+		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, AZ, &sigmaAz, &peakRatioAz);	
+		//fprintf(stderr, "\n\n..Line %i Pixel %i Complex match sigmaRg %f sigmaAz %f peakRatioRg %f peakRatioAz %f\n\n", iOut, jOut, sigmaRg, sigmaAz, peakRatioRg, peakRatioAz);	
+		// Use ratio of sigmas to determine az defocus
+		trackPar->aZDefocus[iOut][jOut] = sigmaAz/sigmaRg;
+	}
 	/* Return if no peak */
-	if (*iMax < -999)
+	if (*iMax < -999 || (fabs(trackPar->aZDefocus[iOut][jOut]) >= trackPar->azDefocusThresh && trackPar->checkAzFocus == TRUE))	
 		return;
+	// Needed to correctly scale correlation for amplitude match, since I am not using the same
+	// normalization as complex match, and I want to use the same cThresh for both
+	pScale = 16.;
+	if(trackPar->gaussFlag == TRUE)
+	{
+		cmpTrackGauss(trackPar, iMax, jMax, cMax, wR, wA, caNoPadM, p1*pScale, p2*pScale, FALSE, 2+large);
+		return;
+	}
 	/*  load from around peak to oversample;  */
 	for (i = 0; i < NFAST; i++)
 	{
@@ -501,9 +574,10 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	jMax1 = 0;
 	*cMax = 0.0;
 	for (i = (NFAST * NOVER) / 2 - NOVER * 2; i < (NFAST * NOVER) / 2 + NOVER * 2; i++)
+	{
 		for (j = (NFAST * NOVER) / 2 - NOVER * 2; j < (NFAST * NOVER) / 2 + NOVER * 2; j++)
 		{
-			corr = (cFastOver[i][j].re * cFastOver[i][j].re + cFastOver[i][j].im * cFastOver[i][j].im);
+			corr =  absCmpx(cFastOver[i][j], FALSE);
 			if (corr > *cMax)
 			{
 				*cMax = corr;
@@ -511,16 +585,21 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 				jMax1 = j;
 			}
 		}
+	}
 	/* Compute correlation */
-	*cMax = sqrt(*cMax) / (pow((double)(wA * OS), 2) * pow((double)(wR * OS), 2) * pow((double)NFAST, 2));
+	
+	*cMax = *cMax / (pow((double)(wA * OS), 2) * pow((double)(wR * OS), 2) * pow((double)NFAST, 2));
 	*cMax = *cMax / sqrt(p1 * p2);
 	/* Compute offsets */
 	*iMax = (*iMax * NOVER) + iMax1 - (NOVER * NFAST) / 2;
 	*jMax = (*jMax * NOVER) + jMax1 - (NOVER * NFAST) / 2;
+	//fprintf(stderr, "Complex match peak at i %i j %i cMax %f abs %f %i %i\n", iMax1, jMax1, *cMax, absCmpx(cFastOver[iMax1][jMax1], FALSE), *iMax, *jMax); 
 }
+
 
 /*
 Use non-oversampled complex data, then zero pad spectra to oversample correlation
+Includes deramping.	
 */
 static void cmpPSWithPad(TrackParams *trackPar)
 {
@@ -529,11 +608,9 @@ static void cmpPSWithPad(TrackParams *trackPar)
 	extern fftw_complex **psNoPad;
 	extern fftwnd_plan cForwardIn; /* ... */
 	extern fftw_complex **fftF1os, **fftF2os;
-	fftw_complex zero;
+	fftw_complex zero = {0.0, 0.0};
 	int32_t i, j, i1, j1, i2, j2, ia, ja, j2a;
 	/*	  Compute forward fft's	*/
-	zero.re = 0.0;
-	zero.im = 0.0;
 	fftwnd_one(cForwardIn, patch1[0], fftF1os[0]);
 	fftwnd_one(cForwardIn, patch2[0], fftF2os[0]);
 	/* zero pad */
@@ -589,7 +666,9 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	*cMax = 0.;
 	findCPeak(cNoPadMag, cNoPad, trackPar->wR * OSA, trackPar->wA * OSA, iMax, jMax, cMax);
 	if (*iMax < -999)
+	{
 		return;
+	}
 	/*  Load from around peak to oversample;	*/
 	for (i = 0; i < NFAST; i++)
 	{
@@ -611,7 +690,7 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	for (i = (NFAST * NOVER) / 2 - NOVER * 2; i < (NFAST * NOVER) / 2 + NOVER * 2; i++)
 		for (j = (NFAST * NOVER) / 2 - NOVER * 2; j < (NFAST * NOVER) / 2 + NOVER * 2; j++)
 		{
-			corr = (cFastOver[i][j].re * cFastOver[i][j].re + cFastOver[i][j].im * cFastOver[i][j].im);
+			corr = absCmpx(cFastOver[i][j], FALSE);
 			if (corr > *cMax)
 			{
 				*cMax = corr;
@@ -620,13 +699,11 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 			}
 		}
 	/* Added 10/19/18 for hanning bias */
-	if (trackPar->legacyFlag == TRUE)
-		osF = OSA;
-	else
-		osF = 1.;
-	*cMax = hanningCorrection * sqrt(*cMax) /
-			(pow((double)(trackPar->wA * osF), 2) * pow((double)(trackPar->wR * osF), 2) * pow((double)NFAST, 2));
-	*cMax = *cMax / sqrt(trackPar->p1 * trackPar->p2);
+	osF = 1.;
+	// Normalize for oversampling. 
+	*cMax =  *cMax/ (NFAST*NFAST);
+	*cMax = hanningCorrection * (*cMax)  / (sqrt(trackPar->p1 * trackPar->p2) * pow(trackPar->wR * trackPar->wA, 2));
+	// Finally compute offsets
 	*iMax = (*iMax * NOVER) + iMax1 - (NOVER * NFAST) / 2;
 	*jMax = (*jMax * NOVER) + jMax1 - (NOVER * NFAST) / 2;
 }
@@ -648,11 +725,11 @@ static void finalizeCmpxMatch(double cMax, int32_t iMax, int32_t jMax, double wR
 	if (cMax > .185 && trackPar->noComplex == FALSE)
 	{
 		/* Update shift with correction */
-		*rShift1 = ((float)jMax - wRover2exp) * invNOVER / OSA;
-		*aShift1 = ((float)iMax - wAover2exp) * invNOVER / OSA;
+		*rShift1 = ((float)jMax - wRover2exp) * invNOVER / OS;
+		*aShift1 = ((float)iMax - wAover2exp) * invNOVER / OS;
 		/* Check that mach is within 1/8 of the window size */
-		if (fabs((double)*rShift1) < 0.125 * trackPar->wR * OSA &&
-			fabs((double)*aShift1) < 0.125 * trackPar->wA * OSA)
+		if (fabs((double)*rShift1) < 0.125 * trackPar->wR * OS &&
+			fabs((double)*aShift1) < 0.125 * trackPar->wA * OS)
 		{
 			*good = TRUE;
 			trackPar->nComplex++;
@@ -710,13 +787,21 @@ static void findCPeak(float **corrF, fftw_complex **corrNoPad,
 			j1++;
 		}
 	}
-	/*  Check that peak is within range */
 	if (*iMax < (NFAST / 2) || *iMax > (wA - NFAST / 2) || *jMax < (NFAST / 2) || *jMax > (wR - NFAST / 2))
 	{
 		*cMax = -1.0;
 		*jMax = -1000.;
 		*iMax = -1000.;
 	}
+	/* For debugging only - write out correlation function around peak to file for  analysis *
+	char debugFile[128];
+	static int myCount=0;
+	snprintf(debugFile, sizeof(debugFile), "debug/debug.file.%d", myCount);
+	myCount++;
+	//fprintf(stderr, "--- %i %i [[[\n", wA, wR);
+	FILE *fpDebug= fopen(debugFile,"w");	fwriteBS(corrF[0],4, wR*wA,fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	*/
+	/*  Check that peak is within range */
 }
 
 /*
@@ -735,7 +820,10 @@ static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t
 		if (rShift > (-LARGEINT + 1))
 		{
 			haveShift = TRUE;
-		}
+		} else {
+			// Added 2/18/26 since polynomial fit not read if 2D offset field supplied.
+			return;
+		} 
 	}
 	if (trackPar->polyShift == TRUE || haveShift == FALSE)
 	{
@@ -744,6 +832,7 @@ static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t
 		aShift = trackPar->aShiftPoly[0] + (double)(r1 * sc) * trackPar->aShiftPoly[1] +
 				 (double)(a1 * sc) * trackPar->aShiftPoly[2];
 	}
+	
 	/* Added 8/21 for tsx scaling */
 	rShift /= sc;
 	aShift /= sc;
@@ -787,10 +876,7 @@ static void phaseCorrectBaseline(TrackParams *trackPar, int32_t r1, int32_t a1)
 	int32_t i, j, j1, j2, i1, i2;
 	int32_t overSample;
 	/* account for new patch oversampling */
-	if (trackPar->legacyFlag == FALSE)
-		overSample = 1;
-	else
-		overSample = OSA;
+	overSample = 1;
 	/* Along track coordate (-.5,.5) */
 	x = (a1 - trackPar->wA / 2 - (trackPar->imageP1.nSlpA / 2)) /
 		(double)(trackPar->imageP1.nSlpA);
@@ -917,8 +1003,6 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 /*
   Read patches for amplitude matching
 */
-
-
 static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar, int32_t large)
 {
 	size_t offset1, offset2;
@@ -948,27 +1032,32 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	float scale;
 	int32_t azShift, rangeShift;
 	int32_t ia, i2a, nZero;
+	float threshold;
 	void *tmp;
 	zero.re = 0.0;
 	zero.im = 0.0;
 	nZero = 0;
 	if (a1 >= trackPar->imageP1.nSlpA || a2 >= trackPar->imageP2.nSlpA)
 	{
-		error("getAmppatches");
+		error("getAmpPatches");
 		return (FALSE);
 	}
 	if (trackPar->floatFlag == TRUE)
 	{
+		//fprintf(stderr, "Using float buffers for amplitude match\n");
 		sSize = sizeof(fftw_complex);
 		fftwBuf1 = (fftw_complex **)imageBuf1.buf;
 		fftwBuf2 = (fftw_complex **)imageBuf2.buf;
+		threshold = 1.0e-15;
 	}
 	else
 	{
 		sSize = sizeof(strackComplex);
 		ers1Buf1 = (strackComplex **)imageBuf1.buf;
 		ers1Buf2 = (strackComplex **)imageBuf2.buf;
+		threshold = 1.0e-6;
 	}
+	float thresholdAll = threshold*  trackPar->wAa * trackPar->wRa;	
 	if (large == TRUE)
 	{
 		wAa = trackPar->wAa * LA;
@@ -999,8 +1088,15 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	/*
 	  Load buffers if needed
 	*/
-	loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar, a1, wAa, sSize, fp1);
-	loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar, a2, wAa, sSize, fp2);
+    if(trackPar->hBand1 == NULL) 
+		{loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar, a1, wAa, sSize, trackPar->fpI1);} 
+	else
+		{loadBufferVRT(&imageBuf1, trackPar->hBand1, &(trackPar->imageP1), trackPar, a1, wAa, sSize);}
+	
+	if(trackPar->hBand2 == NULL) 
+		{loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar, a2, wAa, sSize, trackPar->fpI2);} 
+	else
+		{loadBufferVRT(&imageBuf2, trackPar->hBand2, &(trackPar->imageP2), trackPar, a2, wAa, sSize);}
 	/*
 	  Get complex data
 	*/
@@ -1040,18 +1136,14 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 		fftwnd_one(aForwardInL, im2in[0], f2[0]);
 	}
 	azShift = 0;  // Default
-	if(trackPar->legacyFlag == TRUE)
+
+	// If not computed for complex match, compute for smaller amp patch (12/3/25)
+	if(trackPar->noComplex == TRUE && large == FALSE) 
 	{
-		// If not computed for complex match, compute for smaller amp patch (12/3/25)
-		if(trackPar->noComplex == TRUE && large == FALSE) 
-		{
-			estDopCarrier(trackPar, f1, f2, trackPar->wAa, trackPar->wRa);
-		} 
-		// Scale offset for complex patch to current patch size
-		azShift = (int)((float)trackPar->azShift * (float)wAa / (float)trackPar->wA);
-	
-	}
-	// Not currently used
+		estDopCarrier1(trackPar, im1in, im2in, trackPar->wAa, trackPar->wRa);
+	} 
+	// Scale offset for complex patch to current patch size
+	azShift = (int)((float)trackPar->azShift * (float)wAa / (float)trackPar->wA);
 	rangeShift = (int)((float)trackPar->rangeShift * (float)wRa / (float)trackPar->wR);
 	/*
 	  Zero pad fft for over sampling
@@ -1082,7 +1174,7 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 			im1[i][j].im = 0.0;
 			im2[i][j].re = absCmpx(im2[i][j], TRUE) * scale;
 			im2[i][j].im = 0.0;
-			if (im1[i][j].re < 1.e-9 || im2[i][j].re < 1e-9)
+			if (im1[i][j].re < threshold || im2[i][j].re < threshold)
 				nZero++;
 			i1Sum += im1[i][j].re;
 			i2Sum += im2[i][j].re;
@@ -1141,19 +1233,30 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 	/*
 	  Load buffers if needed
 	*/
-	loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar, a1, trackPar->wA, sSize, fp1);
-	loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar, a2, trackPar->wA, sSize, fp2);
+
+	if(trackPar->hBand1 == NULL) 
+		{loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar, a1, trackPar->wA, sSize, fp1);} 
+	else
+		{loadBufferVRT(&imageBuf1, trackPar->hBand1, &(trackPar->imageP1), trackPar, a1, trackPar->wA, sSize);}
+
+	if(trackPar->hBand2 == NULL) 
+		{loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar, a2, trackPar->wA, sSize, fp2);} 
+	else
+		{loadBufferVRT(&imageBuf2, trackPar->hBand2, &(trackPar->imageP2), trackPar, a2, trackPar->wA, sSize);}
 	/*   Loop to input patches    */
-	if (trackPar->legacyFlag == TRUE)
+	patch1Use = patch1;
+	patch2Use = patch2;
+	float threshold, thresholdAll;
+	if (trackPar->floatFlag == TRUE)
 	{
-		patch1Use = patch1in;
-		patch2Use = patch2in;
+		threshold = 1e-15;
+		
 	}
 	else
 	{
-		patch1Use = patch1;
-		patch2Use = patch2;
+		threshold = 1e-9;
 	}
+	thresholdAll = threshold * trackPar->wA * trackPar->wR;
 	/*
 	   Non-legacy case overSample in correlation not here.
 	 */
@@ -1188,66 +1291,76 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 				patch2Use[i][j].re *= hanning[i][j];
 				patch2Use[i][j].im *= hanning[i][j];
 			}
+			// TRUE -> abs^2, FALSE -> abs
 			power1 = absCmpx(patch1Use[i][j], TRUE);
 			power2 = absCmpx(patch2Use[i][j], TRUE);
-			if (power1 < 1e-9 || power2 < 1e-9) {
+			if (power1 < threshold || power2 < threshold) {
 				nZero++;
-			}
-			
+			}	
 			/* If more than 20 effectively zero points, skip patch - avoids edges */
 			if (nZero > 20) {
+				//fprintf(stderr, "Too many zero points in patch: nZero %d %f %f\n", nZero, power1, power2);
 				return (FALSE);
-			}
-				
+			}			
 			p1 += power1;
 			p2 += power2;
 		}
 	}
-	if (p1 < 1e-6 || p2 < 1e-6)
+	if (p1 < thresholdAll || p2 < thresholdAll)
+	{
+		fprintf(stderr, "Patch power too low: p1 %e p2 %e\n", p1, p2);
 		return (FALSE);
-	if (trackPar->legacyFlag == FALSE)
-	{
-		/* Scale and compute power */
-		trackPar->p1 = p1 / (double)(trackPar->wA * trackPar->wR);
-		trackPar->p2 = p2 / (double)(trackPar->wA * trackPar->wR);
-		return (TRUE);
 	}
-	/*
-	   Legacy case. Oversample here and apply some other corrections.
-	*/
-
-	/* Forward FFT */
-	fftwnd_one(cForwardIn, patch1in[0], fftF1os[0]);
-	fftwnd_one(cForwardIn, patch2in[0], fftF2os[0]);
 	// Carrier estimation
-	estDopCarrier(trackPar, fftF1os, fftF2os, trackPar->wA, trackPar->wR);
-	//estCarrier(trackPar);
-	estRangeCarrier(trackPar);
-	/* Zero arrays */
-	zeroPadFFT(fftF1, OSA * trackPar->wA, OSA * trackPar->wR, fftF1os, trackPar->wA, trackPar->wR, trackPar->azShift, trackPar->rangeShift);
-	zeroPadFFT(fftF2, OSA * trackPar->wA, OSA * trackPar->wR, fftF2os, trackPar->wA, trackPar->wR, trackPar->azShift, trackPar->rangeShift);
-	/* Inverse fft */
-	fftwnd_one(trackPar->cReverseNoPad, fftF1[0], patch1[0]);
-	fftwnd_one(trackPar->cReverseNoPad, fftF2[0], patch2[0]);
+	estDopCarrier1(trackPar, patch1Use, patch2Use, trackPar->wA, trackPar->wR);
 	/* Scale and compute power */
-	p1 = 0.;
-	p2 = 0.0;
-	scale = 1.0 / (trackPar->wA * trackPar->wR * OSA);
-	for (i = 0; i < trackPar->wA * OSA; i++)
-	{
-		for (j = 0; j < trackPar->wR * OSA; j++)
-		{
-			patch1[i][j].re *= scale;
-			patch1[i][j].im *= scale;
-			patch2[i][j].re *= scale;
-			patch2[i][j].im *= scale;
-			p1 += absCmpx(patch1[i][j], TRUE);
-			p2 += absCmpx(patch2[i][j], TRUE);
-		}
-	}
-	trackPar->p1 = p1 / (double)(trackPar->wA * OSA * trackPar->wR * OSA);
-	trackPar->p2 = p2 / (double)(trackPar->wA * OSA * trackPar->wR * OSA);
+	trackPar->p1 = p1 / (double)(trackPar->wA * trackPar->wR);
+	trackPar->p2 = p2 / (double)(trackPar->wA * trackPar->wR);
 	return (TRUE);
+	/*
+	char debugFile[128];
+	static int myCount=0;
+	snprintf(debugFile, sizeof(debugFile), "debug/debug.patch1.%d", myCount);
+	fprintf(stderr, "--- %i %i ]]]\n", trackPar->wA, trackPar->wR);
+	FILE *fpDebug= fopen(debugFile,"w");	fwriteBS(patch1[0],4, 2*trackPar->wR*trackPar->wA*OS*OS,fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	snprintf(debugFile, sizeof(debugFile), "debug/debug.patch2.%d", myCount);
+	fpDebug= fopen(debugFile,"w");	fwriteBS(patch2[0],4, 2*trackPar->wR*trackPar->wA*OS*OS,fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	myCount++;
+	*/
+}
+
+static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
+                          SARData *imageP1, TrackParams *trackPar,
+                          int32_t a1, int32_t wAa, size_t sSize)
+{
+    int a1a, nLinesToRead;
+    CPLErr err;
+	GDALDataType myType;
+
+	if (sSize == sizeof(fftw_complex))
+    	myType = GDT_CFloat32;
+	else
+    	myType = GDT_CInt16;
+    if (a1 < imageBuf1->firstRow || (a1 + wAa) > imageBuf1->lastRow)
+    {
+        a1a = max(0, a1 - trackPar->wAa * LA);
+        nLinesToRead = min(imageP1->nSlpA - a1a, NBUFFERLINES);
+        err = GDALRasterIO(hBand, GF_Read,
+                           0, a1a,
+                           imageP1->nSlpR, nLinesToRead,
+                           imageBuf1->buf[0],
+                           imageP1->nSlpR, nLinesToRead,
+                           myType, 0, 0);
+
+        if (err != CE_None)
+        {
+            fprintf(stderr, "Error reading VRT\n");
+            exit(1);
+        }
+        imageBuf1->firstRow = a1a;
+        imageBuf1->lastRow = a1a + nLinesToRead - 1;
+		//fprintf(stderr, "Loaded VRT buffer: rows %d to %d %d\n", a1a, a1a + nLinesToRead - 1, nLinesToRead);
+    }
 }
 
 /*
@@ -1277,23 +1390,37 @@ static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trac
 		}		
 		imageBuf1->firstRow = a1a;
 		imageBuf1->lastRow = a1a + min(imageP1->nSlpA - a1a, NBUFFERLINES) - 1;
+
+			fprintf(stderr, "Loaded XX buffer: rows %ld to %ld %ld\n", a1a, a1a + s1 - 1, s1);
+fftw_complex **x = (fftw_complex **)imageBuf1->buf;
+fprintf(stderr,"%f %f %f %f\n", 	x[1][1].re, x[1][1].im, x[500][500].re, x[500][500].im);
 	}
+
 }
 
 /*
 open all the necessary files
  */
-static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar)
+static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC, FILE **fpAzD, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar)
 {
 	*fpR = fopen(trackPar->outFileR, "w");
 	*fpA = fopen(trackPar->outFileA, "w");
 	*fpC = fopen(trackPar->outFileC, "w");
+	*fpAzD = fopen(trackPar->outFileAzDefocus, "w");
 	*fpT = fopen(trackPar->outFileT, "w");
 	/*
 		  Open input files
 	*/
-	*fp1 = openInputFile(trackPar->imageFile1);
-	*fp2 = openInputFile(trackPar->imageFile2);
+	if (trackPar->hBand1 == NULL)
+	{
+		trackPar->fpI1 = openInputFile(trackPar->imageFile1);
+		*fp1 = trackPar->fpI1;
+	} 
+	if (trackPar->hBand2 == NULL)
+	{
+		trackPar->fpI2 = openInputFile(trackPar->imageFile2);
+		*fp2 = trackPar->fpI2;
+	}
 }
 
 void printLineSummary(int32_t nTot, int32_t a1, double cAvg, double cAvgAmp, int32_t nMask, time_t lastTime,
@@ -1361,23 +1488,6 @@ static void clearTrackParBuffs(TrackParams *trackPar)
 	}
 }
 
-
-/*
-  Pre compute sinShitfs. (legacy)
- */
-static void computeSinShift(double **sinShift, double **cosShift, TrackParams *trackPar)
-{
-	int32_t i;
-	double tmpx1;
-	*sinShift = malloc(trackPar->wA * sizeof(double));
-	*cosShift = malloc(trackPar->wA * sizeof(double));
-	for (i = 0; i < trackPar->wA; i++)
-	{
-		tmpx1 = 2.0 * PI / (double)(trackPar->wA) * (double)i;
-		(*sinShift)[i] = sin(tmpx1);
-		(*cosShift)[i] = cos(tmpx1);
-	}
-}
 
 /*
   Do plans for fft's
@@ -1599,10 +1709,7 @@ static void mallocSpace(TrackParams *trackPar)
 	/*
 	  Patches
 	*/
-	if (trackPar->legacyFlag == TRUE)
-		overSample = OSA;
-	else
-		overSample = 1;
+	overSample = 1;
 	patch1 = mallocfftw_complexMat(trackPar->wA * overSample, trackPar->wR * overSample);
 	patch2 = mallocfftw_complexMat(trackPar->wA * overSample, trackPar->wR * overSample);
 	patch1in = mallocfftw_complexMat(trackPar->wA, trackPar->wR);
@@ -1669,6 +1776,7 @@ static void mallocSpace(TrackParams *trackPar)
 	/* Malloc outputs.    */
 	trackPar->offR = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->offA = mallocFloatMat(trackPar->nA, trackPar->nR);
+	trackPar->aZDefocus = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->corr = mallocFloatMat(trackPar->nA, trackPar->nR);
 	trackPar->type = mallocByteMat(trackPar->nA, trackPar->nR);
 }
@@ -1707,6 +1815,8 @@ static float absCmpx(fftw_complex x, int32_t noSquareRoot)
 		return (x2);
 	return (sqrt(x2));
 }
+
+
 
 /* Determine if points (r1,a1) and (r2,a2) with windows wR, wA in their respective image bounds */
 static int32_t boundsCheck(int32_t r1, int32_t a1, int32_t r2, int32_t a2, int32_t wR, int32_t wA, TrackParams *trackPar)
@@ -1949,32 +2059,6 @@ static void zeroFloat(float **x, int32_t na, int32_t nr)
 /* ********************************** LEGACY CODE ***************************************/
 
 /*
-  Compute  spectrum for oversampled data - legacy case
-*/
-static void cmpPSNoPad(TrackParams *trackPar)
-{
-	extern fftw_complex **fftF1, **fftF2;
-	extern fftw_complex **patch1, **patch2;
-	extern fftw_complex **psNoPad;
-	int32_t i, j, i1;
-	FILE *fp1;
-	/*  Compute forward fft's	*/
-	fftwnd_one(trackPar->cForward, patch1[0], fftF1[0]);
-	fftwnd_one(trackPar->cForward, patch2[0], fftF2[0]);
-	/*  Zero pad fft for over sampling  spectral shift has been moved to input 11/15/00 ...	*/
-	i1 = 0;
-	for (i = 0; i < trackPar->wA * OSA; i++)
-	{
-		for (j = 0; j < trackPar->wR * OSA; j++)
-		{
-			psNoPad[i][j].re = fftF1[i1][j].re * fftF2[i1][j].re + fftF1[i1][j].im * fftF2[i1][j].im;
-			psNoPad[i][j].im = fftF1[i1][j].im * fftF2[i1][j].re - fftF1[i1][j].re * fftF2[i1][j].im;
-		} /* End for j */
-		i1++;
-	} /* End for i */
-}
-
-/*
   Legacy code to remove estimate any range carrier.
  */
 static void estRangeCarrier(TrackParams *trackPar)
@@ -2007,75 +2091,119 @@ static void estRangeCarrier(TrackParams *trackPar)
 	trackPar->rangeShift = (iMin + trackPar->wR / 2) % trackPar->wR;
 }
 
-static void azComputeAzShift(int32_t j, int32_t *prevShift, TrackParams *trackPar, double *cosShift, double *sinShift)
+
+/* ANSI C (C89) */
+#include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+typedef struct {
+    double re;
+    double im;
+} cpx;
+
+/* Multiply: a * conj(b) */
+static cpx mul_conj(cpx a, cpx b)
 {
-	double tmpx1, tmpy1;
-	if (j > 0 && prevShift >= 0)
-	{ /* Avoid wrap around errors */
-		tmpx1 = 0.25 * cosShift[trackPar->azShift] + 0.75 * cosShift[*prevShift];
-		tmpy1 = 0.25 * sinShift[trackPar->azShift] + 0.75 * sinShift[*prevShift];
-		trackPar->azShift = (int)(atan2(tmpy1, tmpx1) / PI * (double)trackPar->wA / 2.0);
-		if (trackPar->azShift < 0)
-			trackPar->azShift += trackPar->wA;
-	}
-	*prevShift = trackPar->azShift;
+    cpx out;
+    /* (ar + i ai) * (br - i bi) = (ar*br + ai*bi) + i(ai*br - ar*bi) */
+    out.re = a.re * b.re + a.im * b.im;
+    out.im = a.im * b.re - a.re * b.im;
+    return out;
 }
 
-/*
-  Estimate carrier resulting from non-zero Doppler. This
-  is needed to get the oversampling right. The same
-  carrier is removed from both patches under the assumption
-  that the data were processed to the same doppler.
 
-  Modified 11/14/00 changed to look for min rather
-  than max to ensure min gets moved to highend freqs.
-
-  Modified 12/3/25 to work for both amplitude & complex
-*/
-static void estDopCarrier(TrackParams *trackPar, fftw_complex **f1c, fftw_complex **f2c, int32_t na, int32_t nr)
+static int iround(double x)
 {
-	double minS = 2.e30;
-	int32_t i, j, iMin;
-	for (i = 0; i < na; i++)
-	{
-		float sp = 0.;
-		for (j = 0; j < nr; j++)
-		{	// sum power from both images, assuming same Dop, for each freq bin
-			sp += f1c[i][j].re * f1c[i][j].re + f1c[i][j].im * f1c[i][j].im;
-			sp += f2c[i][j].re * f2c[i][j].re + f2c[i][j].im * f2c[i][j].im;
-		}
-		// Compute min, which works better than max
-		if (sp < minS)
-		{
-			iMin = i;
-			minS = sp;
-		}
-	}
-	// This is the azShift for the amplitude patch
-	trackPar->azShift = (iMin + na / 2) % na;
-	// Normalize back to complex window size to be consistent with cmp case
-	// Will get renormalized for amplitude case
-	trackPar->azShift = (int)((float)trackPar->azShift * (float)trackPar->wA/(float)na);
-}	
+    return (x >= 0.0) ? (int)(x + 0.5) : (int)(x - 0.5);
+}
 
-/* ************************ EXPERIMENTAL CODE ********************************/
-
-#define NGAUSS 6
 xyData *peakXY = NULL;
+xyData *peakX = NULL;
 float *gaussCorr = NULL;
 float *sigGauss = NULL;
 float **alpha, **covarm;
+float *gaussCorr1D = NULL;
+float *sigGauss1D = NULL;
+float **alpha1D, **covarm1D;
 float iSigSave = 2.50, jSigSave = 2.5;
+
 /*
 Experimental peak fitting with gaussian - not well tested. Correlation peaks not quite right.
 */
-static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax)
+
+static void gaussPeak1D(TrackParams *trackPar, float**cMag, int32_t iMax, int32_t jMax, 
+						double cMax, int AzOrRg, float *sigma, float *peakRatio)
 {
-	extern fftw_complex **fftF1, **fftF2;
-	extern fftw_complex **cFast, **cFastOver;
-	extern fftw_complex **cNoPad;
-	extern float **cFastOverMag, **cNoPadMag;
-	extern fftw_complex **patch1, **patch2;
+	extern xyData *peakX;
+	extern float *gaussCorr1D;
+	extern float *sigGauss1D;
+	extern float **alpha1D, **covarm1D;
+	int i, i1, i2, iData;
+	float a[4]; 
+	int ia[4] = {0, 1, 1, 1}; /* ia indicates which params to solve for - should be set a[1:3]=1 */
+	float alamada, chisq, lasti;		 /* Solver params */
+	if (peakX == NULL)
+	{
+		fprintf(stderr, "Gauss1DInit: ");
+		peakX = (xyData *)malloc((NGAUSS + 1) * sizeof(xyData));
+		gaussCorr1D = vector(1, NGAUSS );
+		sigGauss1D = vector(1, NGAUSS );
+		covarm1D = matrix(1, 3, 1, 3);
+		alpha1D = matrix(1, 3, 1, 3);
+	}
+
+	//fprintf(stderr, "1D Gauss fit at %d %d cMax %f\n", iMax, jMax, cMax);
+	float maxC = 0;
+	/*  Load from around peak to oversample;	*/
+	iData = 1;
+	for (i = 0; i < NGAUSS; i++)
+	{
+		if (AzOrRg == AZ)
+		{
+			i1 = iMax - NGAUSS / 2 + i;
+			gaussCorr1D[iData] = cMag[i1][jMax];
+			a[2] = (float)iMax;
+		} else
+		{
+			i1 = jMax - NGAUSS / 2 + i;
+			gaussCorr1D[iData] = cMag[iMax][i1];
+			a[2] = (float)jMax;
+		}
+		sigGauss1D[iData] = .1;
+		peakX[iData].x = i1;
+		// Just normalize to 1 for fitting
+		maxC = max(maxC, gaussCorr1D[iData]);
+		iData++;
+	}
+	//Normalize to 1 for fitting since we are just interested in sigma
+	for (i = 0; i < NGAUSS; i++)
+	{
+		gaussCorr1D[i+1] /= maxC;
+	}
+	alamada = -1.;
+	a[1] = 1;
+	a[2] = peakX[NGAUSS/2 + 1].x;
+	a[3] = 2;
+	lasti = 2e9;
+	//fprintf(stderr, "a[1] %f a[2] %f a[3] %f\n", a[1], a[2], a[3]);
+	for (i = 0; i < 5; i++)
+	{
+		mrqminMod(peakX, gaussCorr1D, sigGauss1D, iData - 1, a, ia, 3, covarm1D, alpha1D, &chisq, &myGauss1D, &alamada);
+		if (fabs(a[2] - lasti) < 0.001 )
+			break; /* With NOVER ~ 0.001 */
+		lasti = a[2];
+		//fprintf(stderr, "a[1] %f a[2] %f a[3] %f\n", a[1], a[2], a[3]);
+	}
+	*sigma = a[3]*.5;
+	*peakRatio = a[1];
+}
+
+
+static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double *cMax, int32_t wR, int32_t wA, float **cFunc, double p1, double p2, int32_t isComplex, int32_t widthScale)
+{
 	extern xyData *peakXY;
 	extern float *gaussCorr;
 	extern float *sigGauss;
@@ -2084,16 +2212,28 @@ static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, d
 	double hanningCorrection, corr;
 	float a[6]; /* Paramters amp, mux, sigx, muy, sigy, 0 element not used */
 	float lasti, lastj;
-	float alamada, chisq;		 /* Solver params */
+	float alamada = -1., chisq;		 /* Solver params */
 	int32_t i, j, i1, j1, ia[6]; /* ia indicates which params to solve for - should be set a[1:5]=1 */
 	int32_t iMax1, jMax1, iData;
 	/* This block should only be invoked on the first call to declare global variables */
+	widthScale =1;
+	int nGauss = NGAUSS*widthScale;
+	if((*iMax - nGauss/2) < 0 || (*iMax + nGauss/2) >= (wA * OS-1) ||
+		(*jMax - nGauss/2) < 0 || (*jMax + nGauss/2) >= (wR * OS-1))
+	{
+		//fprintf(stderr, "GaussFit: Peak at %d %d is too close to edge\n", *iMax, *jMax);
+		*iMax = -LARGEINT;
+		*jMax = -LARGEINT;
+		*cMax = 0;
+		return;
+	}
 	if (peakXY == NULL)
 	{
-		fprintf(stderr, "GaussInit: ");
-		peakXY = (xyData *)malloc((NGAUSS * NGAUSS + 1) * sizeof(xyData));
-		gaussCorr = vector(1, NGAUSS * NGAUSS);
-		sigGauss = vector(1, NGAUSS * NGAUSS);
+		fprintf(stderr, "GaussInit2D: ");
+		// Big enough for 3x width scale
+		peakXY = (xyData *)malloc((NGAUSS*NGAUSS*9 + 1) * sizeof(xyData));
+		gaussCorr = vector(1, NGAUSS*NGAUSS*9);
+		sigGauss = vector(1, NGAUSS*NGAUSS*9);
 		covarm = matrix(1, 5, 1, 5);
 		alpha = matrix(1, 5, 1, 5);
 	}
@@ -2102,53 +2242,64 @@ static void cmpTrackGauss(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, d
 		ia[i] = 1;
 	}
 	/* 1.5 removes bias introduced by single hanning window, added 10/19/18 */
-	if (trackPar->hanningFlag == TRUE)
+	if (trackPar->hanningFlag == TRUE && isComplex == TRUE)
 		hanningCorrection = 1.5;
 	else
-		hanningCorrection = 1.0;
-	/*   FFT to get correlation function */
-	fftwnd_one(trackPar->cReverseNoPad, psNoPad[0], cNoPad[0]);
-	/*  Find correlation peak */
-	*cMax = 0.;
-	findCPeak(cNoPadMag, cNoPad, trackPar->wR * OSA, trackPar->wA * OSA, iMax, jMax, cMax);
-	if (*iMax < -999)
-		return;
-	/*  Load from around peak to oversample;	*/
+		hanningCorrection = 1.0;	
+	int32_t osf = OS;
 	iData = 1;
-	for (i = 0; i < NGAUSS; i++)
+	//fprintf(stderr, "cMax, p1, p2, osf %f %f %f %i\n", *cMax, p1, p2, osf);
+	double scale = hanningCorrection /( sqrt(p1 * p2) * pow(wR * wA, 2));
+	//fprintf(stderr, "%f %f %f %i\n", scale, trackPar->p1, trackPar->p2, osf);
+	double cmaxScaled = 0;
+	for (i = 0; i < nGauss; i++)
 	{
-		i1 = *iMax - NGAUSS / 2 + i;
-		j1 = *jMax - NGAUSS / 2;
-		for (j = 0; j < NGAUSS; j++)
+		i1 = *iMax - nGauss / 2 + i;
+		j1 = *jMax - nGauss / 2;
+		for (j = 0; j < nGauss; j++)
 		{
 			peakXY[iData].x = i1;
 			peakXY[iData].y = j1;
-			gaussCorr[iData] = cNoPadMag[i1][j1];
-			sigGauss[iData] = 5;
+			gaussCorr[iData] = cFunc[i1][j1] * scale;
+			cmaxScaled = max(cmaxScaled, gaussCorr[iData]);
+			sigGauss[iData] = 1.;
 			iData++;
 			j1++;
 		}
 	}
-	alamada = -1.;
-	a[1] = *cMax;
+	/* Initial guecs at params */
+	a[1] = *cMax * scale;
 	a[2] = (float)*iMax;
-	a[3] = iSigSave;
+	a[3] = 3;
 	a[4] = (float)*jMax;
-	a[5] = jSigSave;
+	a[5] = 3;
 	lasti = 2e9;
 	lastj = 2.0e9;
-	for (i = 0; i < 5; i++)
+	for (i = 0; i < 8; i++)
 	{
 		mrqminMod(peakXY, gaussCorr, sigGauss, iData - 1, a, ia, 5, covarm, alpha, &chisq, &myGauss, &alamada);
-		if (fabs(a[2] - lasti) < 0.001 && fabs(a[4] - lastj) < 0.01)
+		if (fabs(a[2] - lasti) < 0.001 && fabs(a[4] - lastj) < 0.001)
 			break; /* With NOVER ~ 0.001 */
 		lasti = a[2];
 		lastj = a[4];
 	}
+	// Scaling back to same units as ovversampled correlation fo
 	*iMax = (int)round(a[2] * NOVER);
 	*jMax = (int)round(a[4] * NOVER);
-	*cMax = (sqrt(a[1])) / sqrt(trackPar->p1 * trackPar->p2);
-	*cMax /= trackPar->osF * sqrt(trackPar->wA * trackPar->wR);
+	//fprintf(stderr, "Gauss fit iMax %d jMax %d cMax %f\n", *iMax, *jMax, a[1]);
+	
+	*cMax = min(a[1], 1.0);
+	//fprintf(stderr, "\nGauss fit failed with sigma %f %f %f\n", a[3], a[5], *cMax);
+	float sigThresh = 1000*sqrt(widthScale);
+	if((0.5*a[3]) > sigThresh || (0.5*a[5]) > sigThresh)
+	{
+		//fprintf(stderr, "\nGauss fit failed with sigma %f %f %f %f\n", a[3], a[5], *cMax, sigThresh);
+		//fprintf(stderr,"XXXXX\n");
+		*iMax = -LARGEINT;
+		*jMax = -LARGEINT;
+		*cMax = 0;
+	}
+	
 }
 
 /*
@@ -2201,7 +2352,7 @@ void mrqcofMod(xyData x[], float y[], float sig[], int32_t ndata, float a[], int
  */
 void mrqminMod(xyData x[], float y[], float sig[], int32_t ndata, float a[], int32_t ia[],
 			   int32_t ma, float **covar, float **alpha, float *chisq,
-			   void (*funcs)(xyData, float[], float *, float[], int), float *alamda)
+			   void (*funcs)(xyData x, float[], float *, float[], int), float *alamda)
 {
 	int32_t j, k, l, i;
 	static int32_t mfit;
@@ -2272,15 +2423,68 @@ static void myGauss(xyData x, float a[], float *y, float dyda[], int32_t na)
 	float argx, argy, ex, facx, facy;
 	float argx1, argy1, ex1, da1, da2, da3, da4, da5;
 	int32_t i;
-	argx = (x.x - a[2]) / a[3];
-	argy = (x.y - a[4]) / a[5];
-	ex = exp(-pow(argx, 2) - pow(argy, 2));
+	float A = a[1];
+    float mux = a[2];
+    float sigx = a[3];
+	float muy = a[4];
+    float sigy = a[5];
+	float dx = x.x - mux;
+	float dy = x.y - muy;
+	argx = 0.5f * (dx*dx) / (sigx*sigx);
+	argy = 0.5f * (dy*dy) / (sigy*sigy);
+	
+	ex = exp(-argx -argy);
 	*y = a[1] * ex;
 	dyda[1] = ex;
-	facx = a[1] * ex * 2 * argx;
-	dyda[2] = facx / a[3];
-	dyda[3] = facx * argx / a[3];
-	facy = a[1] * ex * 2 * argy;
-	dyda[4] = facy / a[5];
-	dyda[5] = facy * argy / a[5];
+	dyda[2] = (*y) * (x.x - mux) / (sigx*sigx);
+	dyda[3] = *y * (x.x - mux)*(x.x - mux) / (sigx*sigx*sigx);
+	dyda[4] = *y * (x.y - muy) / (sigy*sigy);
+	dyda[5] = *y * (x.y - muy)*(x.y - muy) / (sigy*sigy*sigy);
 }
+
+static void myGauss1D(xyData x, float a[], float *y, float dyda[], int32_t na)
+{
+	float argx, argy, ex, facx, facy;
+	float argx1, argy1, ex1, da1, da2, da3, da4, da5;
+    float A = a[1];
+    float mu = a[2];
+    float sig = a[3];
+	float t;
+	int32_t i;
+	t = x.x - a[2];
+	argx = 0.5 * t*t / (sig*sig);
+	//argy = (x.y - a[4]) / a[5];
+	ex = exp(-argx);
+	*y = a[1] * ex;
+	dyda[1] = ex;
+	dyda[2] = *y * t / (sig*sig);
+	dyda[3] = *y * t*t / (sig*sig*sig);
+	//facy = a[1] * ex * 2 * argy;
+	//dyda[4] = facy / a[5];
+	//dyda[5] = facy * argy / a[5];
+}
+
+/*s
+		if( i == 10 && j == 302){
+			fprintf(stderr, "\n\nLarge %i\n", large);
+extern float **caNoPadMag;
+extern float **caNoPadMagL;
+if(large == TRUE) {FILE *fpDebug= fopen("corrLarge","w");	fwriteBS(caNoPadMagL[0],4, trackPar->wRa * OS*trackPar->wAa * OS*ampWScale*ampWScale,fpDebug,FLOAT32FLAG); fclose(fpDebug);}
+else{FILE *fpDebug= fopen("corrSmall","w");	fwriteBS(caNoPadMag[0],4,  trackPar->wRa * OS*trackPar->wAa * OS,fpDebug,FLOAT32FLAG); fclose(fpDebug);}
+
+char debugFile[128];
+extern fftw_complex **img1in, **img2in;								  // ^^^ Detected images for amplitude match
+	extern fftw_complex **img1L, **img2L;							  // ^^^ images for amplitude match
+	static int myCount=0;
+	snprintf(debugFile, sizeof(debugFile), "debug/debug.patch1.%d", myCount);
+	fprintf(stderr, "--- %i %i ]]]\n", trackPar->wAa*ampWScale, trackPar->wRa*ampWScale);
+	int patchSize = 2*trackPar->wRa*trackPar->wAa*OS*OS*ampWScale*ampWScale;
+	fprintf(stderr, "Patch size %i\n", patchSize);
+	FILE *fpDebug= fopen(debugFile,"w");	fwriteBS(img1L[0],4, patchSize,fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	snprintf(debugFile, sizeof(debugFile), "debug/debug.patch2.%d", myCount);
+	fpDebug= fopen(debugFile,"w");	fwriteBS(img2L[0],4, patchSize,fpDebug,FLOAT32FLAG); fclose(fpDebug);
+	myCount++;
+
+if (large == TRUE) 	error( "Saving line %i pixel %i with type %i rShift %f aShift %f cMax %f %f %f\n", i, j, type, trackPar->offR[i][j], trackPar->offA[i][j], cMax, rShiftAmp, aShiftAmp	);
+}
+*/

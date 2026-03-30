@@ -20,11 +20,9 @@ double AzimuthPixelSize = 0; /* Azimuth PixelSize */
 int32_t HemiSphere = 0;
 int32_t DemType = 0;
 double Rotation = 0;
-char *Abuf1, *Abuf2, *Dbuf1, *Dbuf2;
+
 int32_t llConserveMem = 0;			/* Klugxse to maintain backwards compat 9/13/06 */
-float *AImageBuffer, *DImageBuffer; /* Kluge 05/31/07 to seperate image buffers */
-void *offBufSpace1, *offBufSpace2, *offBufSpace3, *offBufSpace4;
-void *lBuf1, *lBuf2, *lBuf3, *lBuf4;
+
 
 int main(int argc, char *argv[])
 {
@@ -34,6 +32,7 @@ int main(int argc, char *argv[])
 	int32_t floatFlag;
 	stateV sv1, sv2;
 	int32_t byteOrder;
+	GDALDatasetH hDS1, hDS2;
 	GDALAllRegister();
 	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder);
 	trackPar.floatFlag = floatFlag;
@@ -47,13 +46,18 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	// Parse First Image
 	fprintf(stderr, "%s  %s\n",trackPar.vrtFile1, trackPar.vrtFile2 );
+
 	if(trackPar.parFile1 != NULL) 
 	{
 		readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
+		trackPar.hBand1 = NULL;
 	} 
 	else if(trackPar.vrtFile1 != NULL)
 	{
-		parseSLCVrt(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder);
+		fprintf(stderr, "Parsing VRT file for image 1\n");
+		parseSLCVrtNew(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder, &hDS1, &trackPar.hBand1);
+		trackPar.fpI1 = NULL;
+		//trackPar.hBand1 = NULL;
 	} 
 	else error("Could not read par or vrt file for image 1\n");
 
@@ -61,10 +65,44 @@ int main(int argc, char *argv[])
 	if(trackPar.parFile2 != NULL) 
 	{
 		readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+		trackPar.hBand2 = NULL;
 	} 
 	else if(trackPar.vrtFile2 != NULL)
 	{
-		parseSLCVrt(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder);
+		parseSLCVrtNew(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder, &hDS2, &trackPar.hBand2);
+		trackPar.fpI2 = NULL;
+	}
+	else error("Could not read par or vrt file for image 1\n");
+
+
+	if(trackPar.parFile1 != NULL) 
+	{
+		readOldPar(trackPar.parFile1, &(trackPar.imageP1), &sv1);
+		trackPar.hBand1 = NULL;
+	} 
+	else if(trackPar.vrtFile1 != NULL)
+	{
+		fprintf(stderr, "Parsing VRT file for image 1\n");
+		parseSLCVrtNew(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder, &hDS1, &trackPar.hBand1);
+		trackPar.fpI1 = NULL;
+		fprintf(stderr, "finished parsing VRT file for image 1\n");
+		//parseSLCVrt(trackPar.vrtFile1, &(trackPar.imageP1), &sv1, &byteOrder);
+	} 
+	else error("Could not read par or vrt file for image 1\n");
+
+	// Parse Second Image
+	if(trackPar.parFile2 != NULL) 
+	{
+		readOldPar(trackPar.parFile2, &(trackPar.imageP2), &sv2);
+		trackPar.hBand2 = NULL;
+	} 
+	else if(trackPar.vrtFile2 != NULL)
+	{
+		fprintf(stderr, "Parsing VRT file for image 2\n");
+		parseSLCVrtNew(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder, &hDS2, &trackPar.hBand2);
+		trackPar.fpI2 = NULL;
+		fprintf(stderr, "finished parsing VRT file for image 2\n");
+		//parseSLCVrt(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder);
 	}
 	else error("Could not read par or vrt file for image 1\n");
 	// Override command line/default if vrt specified 

@@ -41,7 +41,7 @@ void sTrackOut(TrackParams *trackPar)
 /*
   Write offsets, correlation, and match type to output file
  */
-void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpT)
+void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *fpC, FILE *fpAzD, FILE *fpT)
 {
 	fwriteOptionalBS1(trackPar->offR[i], sizeof(float), trackPar->nR, fpR, FLOAT32FLAG, trackPar->byteOrder);
 	fflush(fpR);
@@ -49,6 +49,13 @@ void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *
 	fflush(fpA);
 	fwriteOptionalBS1(trackPar->corr[i], sizeof(float), trackPar->nR, fpC, FLOAT32FLAG, trackPar->byteOrder);
 	fflush(fpC);
+   if(fpAzD != NULL)
+   {
+      fwriteOptionalBS1(trackPar->aZDefocus[i], sizeof(float), trackPar->nR, fpAzD, FLOAT32FLAG, trackPar->byteOrder);
+	   fflush(fpAzD);
+   }
+  
 	fwriteOptionalBS1(trackPar->type[i], sizeof(char), trackPar->nR, fpT, BYTEFLAG, trackPar->byteOrder);
 	fflush(fpT);
+   
 }
