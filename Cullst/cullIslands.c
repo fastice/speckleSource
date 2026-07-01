@@ -118,8 +118,6 @@ void cullIslands(CullParams *cullPar)
     {
         if (holes[i].nH > 0)
         {
-            holes[i].xb = (int32_t *)malloc(holes[i].nB * sizeof(int));
-            holes[i].yb = (int32_t *)malloc(holes[i].nB * sizeof(int));
             holes[i].xh = (int32_t *)malloc(holes[i].nH * sizeof(int));
             holes[i].yh = (int32_t *)malloc(holes[i].nH * sizeof(int));
         }

@@ -21,6 +21,8 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 	d2 = NULL;
 	d3 = NULL;
 	rdfParams = NULL;
+	trackPar->parFile1 = NULL;
+	trackPar->parFile2 = NULL;
 	rdfParams = rdfParse(parFile, rdfParams);
 	//  First image and par file
 	if((trackPar->imageFile1 = rdfValue(rdfParams, "image1")) == NULL)
@@ -196,7 +198,7 @@ void parseTrack(char *parFile, TrackParams *trackPar)
 	if (rdfValue(rdfParams, "edgeA") != NULL)
 	{
 		if (sscanf(rdfValue(rdfParams, "edgeA"), "%i", &(trackPar->edgePadA)) != 1)
-			trackPar->edgePadR = trackPar->edgePad;
+			trackPar->edgePadA = trackPar->edgePad;
 	}
 
 	fprintf(stderr, "edgepad = %i %i %i\n", trackPar->edgePad, trackPar->edgePadR, trackPar->edgePadA);

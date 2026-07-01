@@ -1,11 +1,13 @@
 #include "string.h"
 #include "strack.h"
 #include "math.h"
+#include <omp.h>
 
 double SLat = -91.;
 
-static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex, int32_t *floatFlag, 
-	int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries, int32_t *byteOrder, int32_t *checkAzFocus);
+static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex, int32_t *floatFlag,
+	int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries, int32_t *byteOrder, int32_t *checkAzFocus,
+	int32_t *nThreads);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -31,9 +33,16 @@ int main(int argc, char *argv[])
 	inputImageStructure inputImage;
 	int32_t hanningFlag, legacyFlag, gaussFlag, byteOrder;
 	int32_t checkAzFocus;
+	int32_t nThreads;
 	stateV sv1, sv2;
 	GDALDatasetH hDS1, hDS2;
-	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries, &byteOrder, &checkAzFocus);
+	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries, &byteOrder, &checkAzFocus, &nThreads);
+	if (nThreads > 0) {
+		omp_set_num_threads(nThreads);
+		fprintf(stderr, "\033[1;3;34mompThreads set to %d\033[0m\n", nThreads);
+	} else {
+		fprintf(stderr, "\033[1;3;34mompThreads using default (%d)\033[0m\n", omp_get_max_threads());
+	}
 	trackPar.floatFlag = floatFlag;
 	trackPar.noComplex = noComplex;
 	trackPar.hanningFlag = hanningFlag;
@@ -82,8 +91,8 @@ int main(int argc, char *argv[])
 		parseSLCVrtNew(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder, &hDS2, &trackPar.hBand2);
 		trackPar.fpI2 = NULL;
 	}
-	else error("Could not read par or vrt file for image 1\n");
-	// Override command line/default if vrt specified 
+	else error("Could not read par or vrt file for image 2\n");
+	// Override command line/default if vrt specified
 	if(byteOrder >= 0) trackPar.byteOrder = byteOrder;
 	/*
 	   Parse baseline
@@ -135,14 +144,15 @@ int main(int argc, char *argv[])
 }
 
 static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex,
-					 int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag, 
-					 int32_t *gaussFlag, int32_t *maxTries, int *byteOrder, int32_t *checkAzFocus)
+					 int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag,
+					 int32_t *gaussFlag, int32_t *maxTries, int *byteOrder, int32_t *checkAzFocus,
+					 int32_t *nThreads)
 {
 	int32_t n, i;
 	char *argString;
 	*floatFlag = TRUE;
-	if (argc < 2 || argc > 6)
-		usage(); /* Check number of args */
+	if (argc < 2)
+		usage();
 	*parFile = argv[argc - 1];
 	n = argc - 2;
 	*noComplex = FALSE;
@@ -152,6 +162,7 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 	*byteOrder = MSB;
 	*maxTries = 2;
 	*checkAzFocus = FALSE;
+	*nThreads = 2;
 	for (i = 1; i <= n; i++)
 	{
 		argString = strchr(argv[i], '-');
@@ -159,18 +170,26 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 			*noComplex = TRUE;
 		else if (strstr(argString, "integerComplex") != NULL)
 			*floatFlag = FALSE;
-		else if (strstr(argString, "-noHanning") != NULL)
+		else if (strstr(argString, "noHanning") != NULL)
 			*hanningFlag = FALSE;
 		//else if (strstr(argString, "-legacy") != NULL)
 		//	*legacyFlag = TRUE;
-		else if (strstr(argString, "-gauss") != NULL)
+		else if (strstr(argString, "gauss") != NULL)
 			*gaussFlag = TRUE;
-		else if (strstr(argString, "-singleAmp") != NULL)
+		else if (strstr(argString, "singleAmp") != NULL)
 			*maxTries = 1;
-		else if (strstr(argString, "-LSB") != NULL)
+		else if (strstr(argString, "LSB") != NULL)
 			*byteOrder = LSB;
-		else if (strstr(argString, "-checkAzFocus") != NULL)
+		else if (strstr(argString, "checkAzFocus") != NULL)
 			*checkAzFocus = TRUE;
+		else if (strstr(argString, "ompThreads") != NULL)
+		{
+			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '\0')
+			{
+				sscanf(argv[i + 1], "%d", nThreads);
+				i++;
+			}
+		}
 		else
 			usage();
 	}

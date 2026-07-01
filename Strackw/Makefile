@@ -1,13 +1,22 @@
 CC =		gcc
-CFLAGS  =	$(FLAGS) -c  -I$(INCLUDEPATH) -D_LARGEFILE64_SOURCE -D_FILE64 -D_LARGEFILE_SOURCE -DHPLARGEFILES
+MACHTYPE =	$(shell uname -m)
+OSTYPE =	$(shell uname -s)
+OBJDIR =	$(MACHTYPE)-$(OSTYPE)
 
-OBJS= strackw.o corrTrackFast.o
+$(shell mkdir -p $(OBJDIR))
 
-MACHTYPE = $(shell uname -m)
-OSTYPE = $(shell uname -s)
+CFLAGS =	$(FLAGS) -fopenmp -c -I$(INCLUDEPATH) -D_LARGEFILE64_SOURCE -D_FILE64 -D_LARGEFILE_SOURCE -DHPLARGEFILES -MMD -MP
 
-$(shell mkdir -p $(MACHTYPE)-$(OSTYPE))
+SRCS =	strackw.c corrTrackFast.c mallocPerThreadArraysW.c
+
+OBJS =	$(SRCS:%.c=$(OBJDIR)/%.o)
+
+all:	$(OBJS)
+
+-include $(OBJS:.o=.d)
 
 .KEEP_STATE:
-all:	$(OBJS)
-	mv *.o $(MACHTYPE)-$(OSTYPE)
+
+
+$(OBJDIR)/%.o: %.c
+	$(CC) $(CFLAGS) $< -o $@

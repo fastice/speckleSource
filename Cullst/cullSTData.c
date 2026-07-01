@@ -6,6 +6,7 @@
 #include "math.h"
 #include "stdlib.h"
 #include "mosaicSource/common/common.h"
+#include <omp.h>
 #define NARROWREGION 4
 
 static float selectForCull(uint32_t k, uint32_t n, float arr[]);
@@ -31,6 +32,7 @@ void cullSTData(CullParams *cullPar)
 	nCulled = 0;
 	ngood = 0;
 	fprintf(stderr, "maskFlag %d\n", cullPar->maskFlag);
+#pragma omp parallel for collapse(2) private(maskVal) reduction(+:ngood,nCulled)
 	for (i = 0; i < cullPar->nA; i++)
 	{
 		for (j = 0; j < cullPar->nR; j++)
@@ -68,58 +70,81 @@ void cullSTData(CullParams *cullPar)
 	}
 
 	fprintf(stderr, "n initial %f\n", (double)nCulled / (double)(nCulled + ngood));
-	ngood = 0;
-	nCulled = 0;
+
+	/* Snapshot offR/offA so all threads read from a consistent pre-pass state */
+	float **offRsnap = mallocImage(cullPar->nA, cullPar->nR);
+	float **offAsnap = mallocImage(cullPar->nA, cullPar->nR);
 	for (i = 0; i < cullPar->nA; i++)
 	{
-		// Define box limits, without going out of image
-		i1 = max(0, i - cullPar->bA / 2);
-		i2 = min(cullPar->nA - 1, i + cullPar->bA / 2);
-		for (j = 0; j < cullPar->nR; j++)
+		memcpy(offRsnap[i], cullPar->offR[i], cullPar->nR * sizeof(float));
+		memcpy(offAsnap[i], cullPar->offA[i], cullPar->nR * sizeof(float));
+	}
+
+	nCulled = 0;
+#pragma omp parallel
+	{
+		int32_t ti, tj, ti1, ti2, tj1, tj2, tii, tjj;
+		uint32_t tngood, tmidIndex;
+		double tdiffR, tdiffA;
+		float tmedianR, tmedianA;
+		int32_t tnCulled = 0;
+		float *tlistR = (float *)malloc(sizeof(float) * (1000 + (cullPar->bR + 1) * (cullPar->bA + 1)));
+		float *tlistA = (float *)malloc(sizeof(float) * (1000 + (cullPar->bR + 1) * (cullPar->bA + 1)));
+
+#pragma omp for schedule(dynamic)
+		for (ti = 0; ti < cullPar->nA; ti++)
 		{
-			// Define box limits, without going out of image
-			j1 = max(0, j - cullPar->bR / 2);
-			j2 = min(cullPar->nR - 1, j + cullPar->bR / 2);
-			// Lopp over box to count ngood and build list of good points
-			ngood = 0;
-			for (ii = i1; ii <= i2; ii++)
+			ti1 = max(0, ti - cullPar->bA / 2);
+			ti2 = min(cullPar->nA - 1, ti + cullPar->bA / 2);
+			for (tj = 0; tj < cullPar->nR; tj++)
 			{
-				for (jj = j1; jj <= j2; jj++)
+				tj1 = max(0, tj - cullPar->bR / 2);
+				tj2 = min(cullPar->nR - 1, tj + cullPar->bR / 2);
+				tngood = 0;
+				for (tii = ti1; tii <= ti2; tii++)
 				{
-					if (cullPar->offR[ii][jj] > (1 - LARGEINT) && cullPar->offA[ii][jj] > (1 - LARGEINT))
+					for (tjj = tj1; tjj <= tj2; tjj++)
 					{
-						ngood++;
-						listR[ngood] = cullPar->offR[ii][jj];
-						listA[ngood] = cullPar->offA[ii][jj];
-					} /* Endif cullPar.. */
-				}	  /* End jj */
-			}		  /* End ii */
-			// If enough good points
-			if (ngood > cullPar->nGood)
-			{
-				midIndex = ngood / 2;
-				// Compute median
-				medianR = selectForCull(midIndex, ngood, listR);
-				medianA = selectForCull(midIndex, ngood, listA);
-				// Compute the difference from the median
-				diffA = (double)(cullPar->offA[i][j] - medianA);
-				diffR = (double)(cullPar->offR[i][j] - medianR);
-				// If the differences for the current point are greater than threshold then discard
-				if (fabs(diffA) > cullPar->maxA || fabs(diffR) > cullPar->maxR)
+						if (offRsnap[tii][tjj] > (1 - LARGEINT) && offAsnap[tii][tjj] > (1 - LARGEINT))
+						{
+							tngood++;
+							tlistR[tngood] = offRsnap[tii][tjj];
+							tlistA[tngood] = offAsnap[tii][tjj];
+						}
+					}
+				}
+				if (tngood > (uint32_t)cullPar->nGood)
 				{
-					cullPar->offR[i][j] = (float)-LARGEINT;
-					cullPar->offA[i][j] = (float)-LARGEINT;
-					nCulled++;
+					tmidIndex = tngood / 2;
+					tmedianR = selectForCull(tmidIndex, tngood, tlistR);
+					tmedianA = selectForCull(tmidIndex, tngood, tlistA);
+					tdiffA = (double)(cullPar->offA[ti][tj] - tmedianA);
+					tdiffR = (double)(cullPar->offR[ti][tj] - tmedianR);
+					if (fabs(tdiffA) > cullPar->maxA || fabs(tdiffR) > cullPar->maxR)
+					{
+						cullPar->offR[ti][tj] = (float)-LARGEINT;
+						cullPar->offA[ti][tj] = (float)-LARGEINT;
+						tnCulled++;
+					}
+				}
+				else
+				{
+					cullPar->offR[ti][tj] = (float)-LARGEINT;
+					cullPar->offA[ti][tj] = (float)-LARGEINT;
+					tnCulled++;
 				}
 			}
-			else
-			{
-				cullPar->offR[i][j] = (float)-LARGEINT;
-				cullPar->offA[i][j] = (float)-LARGEINT;
-				nCulled++;
-			}
-		} /* End for j */
-	}	  /* End for i */
+		}
+		free(tlistR);
+		free(tlistA);
+#pragma omp atomic
+		nCulled += tnCulled;
+	} /* end parallel */
+
+	for (i = 0; i < cullPar->nA; i++) { free(offRsnap[i]); free(offAsnap[i]); }
+	free(offRsnap);
+	free(offAsnap);
+
 	fprintf(stderr, "nCulled %i %f\n", nCulled,
 			(double)nCulled / (double)(cullPar->nR * cullPar->nA));
 }

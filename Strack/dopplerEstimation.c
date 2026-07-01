@@ -22,21 +22,18 @@ static int iround(double x)
     return (x >= 0.0) ? (int)(x + 0.5) : (int)(x - 0.5);
 }
 
-void estDopCarrier1(TrackParams *trackPar,  fftw_complex **image1, fftw_complex **image2, int32_t nAz, int32_t nRg)
+int32_t estDopCarrier1(TrackParams *trackPar,  fftw_complex **image1, fftw_complex **image2, int32_t nAz, int32_t nRg)
 {
-    int i, j;
 	double angle1, angle2;
 	int32_t shift;
   	angle1 = computeSingleDop(image1, nAz, nRg);
 	angle2 = computeSingleDop(image2, nAz, nRg);
-	//fprintf(stderr, "\nxxx %f %f %f\n", angle1, angle2, angle1-angle2);
 	shift = iround(nAz/2 *(angle1 + angle2)*.5/PI);
 	if(shift < 0) shift += nAz;
-	trackPar->azShift = shift;
 	// Normalize back to complex window size to be consistent with cmp case
 	// Will get renormalized for amplitude case
-	trackPar->azShift = (int)((float)trackPar->azShift * (float)trackPar->wA/(float)nAz);
-	//printf(stdout, "\n+ %lf %lf %i %i\n", angle1, angle1/PI, nAz, trackPar->azShift);
+	shift = (int)((float)shift * (float)trackPar->wA/(float)nAz);
+	return shift;
 }
 
 static double computeSingleDop(fftw_complex **image, int32_t nAz, int32_t nRg)

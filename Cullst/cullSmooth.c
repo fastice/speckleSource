@@ -6,6 +6,7 @@
 #include "math.h"
 #include "mosaicSource/common/common.h"
 #include "stdlib.h"
+#include <omp.h>
 
 static float *sWeights(int32_t sA)
 {
@@ -13,7 +14,7 @@ static float *sWeights(int32_t sA)
 	float w2;  /* half width as float */
 	float *wA; /* Weights */
 	w2 = (float)sA / 2.0 - 0.01;
-	wA = (float *)malloc(sizeof(float) * sA + 1);
+	wA = (float *)malloc(sizeof(float) * (sA + 1));
 	wA += sA/2;
 	for (m = -sA / 2; m <= sA / 2; m++)
 	{
@@ -47,6 +48,8 @@ void cullSmooth(CullParams *cullPar)
 	wR = sWeights(cullPar->sR);
 	fprintf(stderr, "\n**** smoothing data sr=%i  sa=%i ****\n\n", cullPar->sR, cullPar->sA);
 	/* Azimuth loop */
+#pragma omp parallel for schedule(dynamic) \
+	private(j, i1, i2, j1, j2, iwStart, jwStart, iw, jw, ngood, nLooksEff, meanA, meanR, w)
 	for (i = 0; i < cullPar->nA; i++)
 	{
 		/*

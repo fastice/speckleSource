@@ -91,13 +91,13 @@ void cullLSStats(CullLSParams *cullPar)
 					}
 				}
 			}
-			meanY /= (double)ngood;
-			meanX /= (double)ngood;
 			/*
 			   Estimate plain
 			*/
 			if (ngood > 8)
 			{
+				meanY /= (double)ngood;
+				meanX /= (double)ngood;
 				data[0].x = meanX;
 				svdfit((void *)data, listX, dTmp, ngood, aX, ma, u, v, w,
 					   &chisq, &planeCoeffs);

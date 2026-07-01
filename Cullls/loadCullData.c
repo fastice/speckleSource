@@ -12,7 +12,7 @@ void loadCullData(CullLSParams *cullPar)
 {
     FILE *fp;
     char line[1024];
-    int32_t lineCount, eod;
+    int32_t lineCount = 0, eod;
     int32_t r0, a0, nr, na;
     int32_t deltaA, deltaR;
     /*

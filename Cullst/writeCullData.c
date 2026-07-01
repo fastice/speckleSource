@@ -47,7 +47,7 @@ void writeCullVrt(CullParams *cullPar, int32_t *byteOrder)
 static size_t fwriteOptionalBS(void *ptr, size_t nitems, size_t size, FILE *fp, int32_t flags, int32_t byteOrder)
 {
     if (byteOrder == LSB)
-        return fwrite(ptr, nitems, size, fp);
+        return fwrite(ptr, size, nitems, fp);
     else
         return fwriteBS(ptr, nitems, size, fp, flags);
 }

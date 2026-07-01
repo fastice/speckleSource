@@ -64,4 +64,5 @@ void loadCullData(CullParams *cullPar);
 void loadSimData(CullParams *cullPar);
 void cullSTData(CullParams *cullPar);
 void cullIslands(CullParams *cullPar);
+void cullStatsSmooth(CullParams *cullPar);
 int32_t loadCullMask(CullParams *cullPar);

@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#define MXST 75 /* maximum number of orbital state vectors \
+#define MXST 100 /* maximum number of orbital state vectors \
                    in the processing parameter file */
 
 typedef struct

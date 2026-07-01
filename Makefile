@@ -104,10 +104,11 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 	    	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeXYangle.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/earthRadiusFunctions.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/geojsonCode.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getAzimuthBoundsForXYBox.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getDataStringSpecial.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getBaseline.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getHeight.o \
-	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getMVhInputFile.o \
+		        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getMVhInputFile.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getRegion.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getShelfMask.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getXYHeight.o \
@@ -119,6 +120,7 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpTideDiff.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpVCorrect.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpXYDEM.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/interpolateOffsetCorrection.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/julianDay.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/llToImageNew.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/lltoxy.o \
@@ -130,6 +132,7 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/polintVec.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/rangeAzimuthToLL.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOffsets.o \
+			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOffsetCorrection.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readOldPar.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readShelf.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/readTiePoints.o \
@@ -219,7 +222,8 @@ STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/readBothOffsetsStrack.o \
         Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o \
-		Strack/$(MACHTYPE)-$(OSTYPE)/dopplerEstimation.o
+		Strack/$(MACHTYPE)-$(OSTYPE)/dopplerEstimation.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/mallocPerThreadArrays.o
 
 STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common $(FFTHOME) \
 	$(PROGDIR)/rdfSource/rdfRoutines
@@ -231,7 +235,7 @@ strack:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		g++ $(MEM) $(CCFLAGS1) $(NOPIE) \
+		g++ $(MEM) $(CCFLAGS1) -fopenmp $(NOPIE) \
                 Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON) $(GDALIO) \
                 -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strack
 
@@ -240,6 +244,7 @@ strack:
 #******************************************************************************************************************
 
 STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
+		Strackw/$(MACHTYPE)-$(OSTYPE)/mallocPerThreadArraysW.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseInitialOffsets.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/sTrackOut.o \
@@ -260,7 +265,7 @@ strackw:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		g++ $(MEM)   $(CCFLAGS1) $(NOPIE) \
+		g++ $(MEM)   $(CCFLAGS1) -fopenmp $(NOPIE) \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
             -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strackw
 
@@ -274,6 +279,7 @@ CULLST  =	Cullst/$(MACHTYPE)-$(OSTYPE)/loadCullData.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullStats.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullSmooth.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/cullIslands.o \
+		Cullst/$(MACHTYPE)-$(OSTYPE)/cullStatsSmooth.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/writeVrt.o \
 		Cullst/$(MACHTYPE)-$(OSTYPE)/writeCullData.o
 
@@ -286,7 +292,7 @@ cullst:
 			make FLAGS=$(CCFLAGS) INCLUDEPATH=$(INCLUDEPATH) PAF=0;  \
 			cd $(PROGDIR); \
 		); done
-		g++ $(MEM) $(CCFLAGS1) \
+		g++ $(MEM) $(CCFLAGS1) -fopenmp \
                 Cullst/$(MACHTYPE)-$(OSTYPE)/cullst.o $(CULLST) $(STANDARD) $(RECIPES) $(COMMON) $(UNWRAP) $(GDALIO)\
                 -lm  $(LDFLAGS) $(GDAL)  -o $(BINDIR)/cullst
 

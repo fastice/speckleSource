@@ -7,10 +7,11 @@
 #include "math.h"
 #include <stdlib.h>
 #include <unistd.h>
+#include <omp.h>
 
 #define LARGEINT -2e9
 static char **mallocByteMat(int32_t nA, int32_t nR);
-static void readArgs(int argc, char *argv[], CullParams *cullPar);
+static void readArgs(int argc, char *argv[], CullParams *cullPar, int32_t *nThreads);
 static void usage();
 static void addSubtractSimOffsets(CullParams *cullPar, float mySign);
 /*
@@ -26,20 +27,19 @@ double AzimuthPixelSize = 0; /* Azimuth PixelSize */
 int32_t HemiSphere = 0;
 int32_t DemType = 0;
 double Rotation = 0;
-char *Abuf1, *Abuf2, *Dbuf1, *Dbuf2;
 int32_t llConserveMem = 0;			/* Kluge to maintain backwards compat 9/13/06 */
-float *AImageBuffer, *DImageBuffer; /* Kluge 05/31/07 to seperate image buffers */
-void *offBufSpace1, *offBufSpace2, *offBufSpace3, *offBufSpace4;
-void *lBuf1, *lBuf2, *lBuf3, *lBuf4;
 
 
 int main(int argc, char *argv[])
 {
 	CullParams cullPar;
+	int32_t nThreads;
 	FILE *fp;
 	GDALAllRegister();
 
-	readArgs(argc, argv, &cullPar);
+	readArgs(argc, argv, &cullPar, &nThreads);
+	omp_set_num_threads(nThreads);
+	fprintf(stderr, "\033[1;3;34mompThreads set to %d\033[0m\n", nThreads);
 
 	fprintf(stderr, "Infiles: \n %s\n %s\n %s\n %s\n %s\n", cullPar.inFileR, cullPar.inFileA, cullPar.inFileC, cullPar.inFileD, cullPar.inFileT);
 	fprintf(stderr, "Outfiles: \n %s\n %s\n %s\n %s\n %s\n", cullPar.outFileR, cullPar.outFileA, cullPar.outFileC, cullPar.outFileD, cullPar.outFileT);
@@ -76,23 +76,23 @@ int main(int argc, char *argv[])
 	cullSTData(&cullPar);
 	cullSTData(&cullPar);
 	/*
-	  Compute stats for data
+	  Compute stats and smooth.
+	  When useSim is set, stats run on the residual and smooth on the restored
+	  data, so they must remain separate passes. Otherwise merge them.
 	*/
-	fprintf(stderr, "Cull Stats\n");
-	cullStats(&cullPar);
-	/*
-	   if useSim flag set, then add them back in after the residual difference was culled.
-	 */
 	if (cullPar.useSim == TRUE)
 	{
+		fprintf(stderr, "Cull Stats\n");
+		cullStats(&cullPar);
 		fprintf(stderr, "adding sim offsets back\n");
 		addSubtractSimOffsets(&cullPar, 1.0);
+		fprintf(stderr, "Cull Smooth\n");
+		cullSmooth(&cullPar);
 	}
-	/*
-	  Compute stats for data
-	*/
-	fprintf(stderr, "Cull Smooth\n");
-	cullSmooth(&cullPar);
+	else
+	{
+		cullStatsSmooth(&cullPar);
+	}
 	/*
 	  cull islands
 	*/
@@ -112,7 +112,7 @@ static void addSubtractSimOffsets(CullParams *cullPar, float mySign)
 	for (i = 0; i < cullPar->nR; i++)
 		for (j = 0; j < cullPar->nA; j++)
 		{
-			if (cullPar->offA[j][i] < (-LARGEINT + 1) && cullPar->offSimA[j][i] < (-LARGEINT + 1))
+			if (cullPar->offA[j][i] > (-LARGEINT + 1) && cullPar->offSimA[j][i] > (-LARGEINT + 1))
 			{
 				cullPar->offA[j][i] += mySign * cullPar->offSimA[j][i];
 				cullPar->offR[j][i] += mySign * cullPar->offSimR[j][i];
@@ -120,7 +120,7 @@ static void addSubtractSimOffsets(CullParams *cullPar, float mySign)
 		}
 }
 
-static void readArgs(int argc, char *argv[], CullParams *cullPar)
+static void readArgs(int argc, char *argv[], CullParams *cullPar, int32_t *nThreads)
 {
 	char *argString;
 	char *inBase, *outBase, *simBase;
@@ -131,9 +131,9 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 	int32_t singleMT;
 	int32_t i, n, sLen;
 
-	if (argc < 3 || argc > 21)
+	if (argc < 3 || argc > 23)
 	{
-		fprintf(stderr, "to Many Argc %i %i\n", argc, 21);
+		fprintf(stderr, "to Many Argc %i %i\n", argc, 23);
 		usage();
 	} /* Check number of args */
 	n = argc - 3;
@@ -148,6 +148,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 	cullPar->ignoreOffsets = FALSE;
 	cullPar->useSim = FALSE;
 	corrThresh = 0.0;
+	*nThreads = 4;
 
 	for (i = 1; i <= n; i++)
 	{
@@ -216,6 +217,11 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 		else if (strstr(argString, "ignoreOffsets") != NULL)
 		{
 			cullPar->ignoreOffsets = TRUE;
+		}
+		else if (strstr(argString, "ompThreads") != NULL)
+		{
+			sscanf(argv[i + 1], "%i", nThreads);
+			i++;
 		}
 		else
 		{
@@ -359,7 +365,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar)
 
 static void usage()
 {
-	error("cullst -useSim offsets -ignoreOffsets -islandThresh islandThresh -singleMT singleMT -maxR maxR -maxA maxA -nGood nGood -boxSize boxSize -sr sr -sa sa inbase outbase\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+	error("cullst -useSim offsets -ignoreOffsets -islandThresh islandThresh -singleMT singleMT -maxR maxR -maxA maxA -nGood nGood -boxSize boxSize -sr sr -sa sa -ompThreads nThreads inbase outbase\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
 		  "where",
 		  "useSim is a simulated offsets file to subtract off in cull",
 		  "sr,sa = smoothing window width (full) to apply (if odd then 3->111, if even then 4-> 0.5 1 1 1 0.5)",
@@ -367,5 +373,6 @@ static void usage()
 		  "singleMT = only retain this match type (1,2,or3)",
 		  "maxR,maxA = max deviation from local median",
 		  "corrThresh = min correlation (default 0 to pass all)",
-		  "ignoreOffsets = do not use information from offset file to cull large matches");
+		  "ignoreOffsets = do not use information from offset file to cull large matches",
+		  "ompThreads = number of OpenMP threads (default 4)");
 }

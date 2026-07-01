@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "stdio.h"
 #include "string.h"
 #include "clib/standard.h"
@@ -8,6 +9,7 @@
 #include "time.h"
 #include <libgen.h>
 #include "cRecipes/nrutil.h"
+#include <omp.h>
 
 /*#define NOVER 10
 #define NFAST 16
@@ -131,7 +133,38 @@ fftwnd_plan aForwardIn;
 fftwnd_plan aForwardInL;
 fftw_complex **fftFa1os, **fftFa1Los, **fftFa2os, **fftFa2Los; /*  ^^^ */
 fftwnd_plan cForwardIn;										   /* ... */
+/* Per-thread mirrors for fftwnd plans stored in trackPar (can't be threadprivate
+ * as struct fields).  Initialised to NULL; set by mallocPerThreadArrays(). */
+fftwnd_plan tp_cReverseNoPad = NULL;
+fftwnd_plan tp_cForwardFast  = NULL;
+fftwnd_plan tp_cReverseFast  = NULL;
+fftwnd_plan tp_intForward    = NULL;
+fftwnd_plan tp_intBackward   = NULL;
+#pragma omp threadprivate(tp_cReverseNoPad, tp_cForwardFast, tp_cReverseFast, \
+    tp_intForward, tp_intBackward)
 fftw_complex **fftF1os, **fftF2os;							   /* ... */
+
+/* Per-patch scratch values written by getPatches/estDopCarrier1 and read by
+ * cmpPSWithPad/cmpTrackFast/getAmpPatches in the same j-iteration.
+ * Threadprivate prevents races when multiple threads process different j values. */
+static int32_t tp_azShift = 0;
+static double  tp_p1 = 0.0, tp_p2 = 0.0;
+#pragma omp threadprivate(tp_azShift, tp_p1, tp_p2)
+
+/* Each of the work arrays and fftwnd plans below is private to one thread. */
+#pragma omp threadprivate(fftF1, fftF2, fftF1os, fftF2os, \
+    patch1, patch2, patch1in, patch2in, \
+    psNoPad, cNoPad, cFast, cFastOver, psFast, psFastOver, \
+    cFastOverMag, cNoPadMag, c, f1, f2, \
+    img1, img2, img1in, img2in, \
+    psAmpNoPad, caNoPad, caNoPadMag, \
+    img1L, img2L, img1Lin, img2Lin, \
+    psAmpNoPadL, fftFa1L, fftFa2L, caNoPadL, caNoPadMagL, \
+    fftFa1, fftFa2, \
+    fftFa1os, fftFa1Los, fftFa2os, fftFa2Los, \
+    intPatch, fftIntPatch, intPatchOver, fftIntPatchOver, \
+    aForward, aForwardL, aReverseNoPad, aReverseNoPadL, \
+    aForwardIn, aForwardInL, cForwardIn)
 
 /* ANSI C (C89) */
 #include <math.h>
@@ -168,7 +201,7 @@ void speckleTrack(TrackParams *trackPar)
 	float sigmaAz, sigmaRg;
 	float peakRatioAz, peakRatioRg;
 	int32_t nTot=0, nCorr, nSkip, patchFlag, ampType;
-	int32_t good, type, haveData, nMask=0, *nAmp, nAmpLine;
+	int32_t good, type, haveData, nMask=0, nAmpLine;
 	int32_t i, j, r1, a1, r2, a2;
 	int32_t r1a, a1a, r2a, a2a, jMax, iMax;
 	int32_t prevShift = -1, nTries, ampWScale, maskVal, large; /* Flag to determine whether to match */
@@ -187,10 +220,25 @@ void speckleTrack(TrackParams *trackPar)
 	trackParInits(trackPar);
 	clearTrackParBuffs(trackPar); /* clear buffers before starting */
 	/*
+	  Allocate per-thread work arrays (threadprivate) for each OpenMP thread.
+	  The master thread's copies from mallocSpace are overwritten here; the
+	  small one-time leak is acceptable.
+	*/
+	{
+		extern void mallocPerThreadArrays(TrackParams *trackPar);
+		extern void freePerThreadArrays(void);
+		(void)freePerThreadArrays; /* suppress unused-variable warning */
+#pragma omp parallel
+		{ mallocPerThreadArrays(trackPar); }
+	}
+	/*
 	  Loop to do matching
 	*/
 	trackPar->azShift = 0;
 	myStart = time(NULL);
+	/* Precomputed image-2 positions for the current azimuth row; -1 means masked/invalid */
+	int32_t *r2_arr = (int32_t *)malloc(trackPar->nR * sizeof(int32_t));
+	int32_t *a2_arr = (int32_t *)malloc(trackPar->nR * sizeof(int32_t));
 	for (i = 0; i < trackPar->nA; i++)
 	{
 		lastTime = time(NULL);
@@ -200,20 +248,64 @@ void speckleTrack(TrackParams *trackPar)
 		cAvg = 0.0;
 		cAvgAmp = 0.0;
 		nAmpLine = 0;
+		/* Serial precompute: mask check + findImage2Pos for all j.
+		 * Fills r2_arr/a2_arr (-1 for masked/invalid) and finds the true
+		 * minimum valid a2 to anchor imageBuf2 before the parallel section. */
+		{
+			int32_t jj, r1j, anyMatch = 0, a2_preload;
+			int32_t nSlpA2 = trackPar->imageP2.nSlpA;
+			int32_t a2_min = nSlpA2;
+			size_t sSizeC = (trackPar->floatFlag == TRUE) ?
+			                sizeof(fftw_complex) : sizeof(strackComplex);
+			for (jj = 0; jj < trackPar->nR; jj++) {
+				r1j = trackPar->rStart + jj * trackPar->deltaR - trackPar->wR / 2;
+				if (!maskValue(trackPar, r1j * trackPar->scaleFactor, a1 * trackPar->scaleFactor)) {
+					r2_arr[jj] = a2_arr[jj] = -1;
+					continue;
+				}
+				findImage2Pos(r1j, a1, trackPar, &r2_arr[jj], &a2_arr[jj]);
+				anyMatch = 1;
+				if (a2_arr[jj] >= 0 && a2_arr[jj] < nSlpA2)
+					a2_min = min(a2_min, a2_arr[jj]);
+			}
+			if (!anyMatch) goto next_row;
+			a2_preload = max(0, min((a2_min < nSlpA2) ? a2_min : 0, nSlpA2 - 1));
+			if (trackPar->hBand1 == NULL)
+				loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar,
+				           a1, trackPar->wA, sSizeC, fp1);
+			else
+				loadBufferVRT(&imageBuf1, trackPar->hBand1,
+				              &(trackPar->imageP1), trackPar,
+				              a1, trackPar->wA, sSizeC);
+			if (trackPar->hBand2 == NULL)
+				loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar,
+				           a2_preload, trackPar->wA, sSizeC, fp2);
+			else
+				loadBufferVRT(&imageBuf2, trackPar->hBand2,
+				              &(trackPar->imageP2), trackPar,
+				              a2_preload, trackPar->wA, sSizeC);
+		}
+#pragma omp parallel for schedule(dynamic, 4) \
+    private(r1, r2, a2, haveData, cMax, type, good, nTries, \
+            ampWScale, ampType, maskVal, large, cThresh, \
+            rShift, aShift, rShift1, aShift1, rShiftAmp, aShiftAmp, \
+            r1a, a1a, r2a, a2a, jMax, iMax, \
+            prevShift, patchFlag, sigmaAz, sigmaRg, peakRatioAz, peakRatioRg, \
+            wRover2exp, wAover2exp) \
+    reduction(+: nCorr, nSkip, cAvg, cAvgAmp, nAmpLine, nMask)
 		for (j = 0; j < trackPar->nR; j++)
 		{
+			if (a2_arr[j] < 0) continue;   /* masked */
 			haveData = TRUE;
 			cMax = 0.;
 			type = BAD;
-			/* Find position for second image */
 			r1 = trackPar->rStart + j * trackPar->deltaR - trackPar->wR / 2;
-			findImage2Pos(r1, a1, trackPar, &r2, &a2);
-			// Save for amp match	
+			r2 = r2_arr[j];
+			a2 = a2_arr[j];
+			// Save for amp match
 			rShiftAmp = (r2 - r1);
 			aShiftAmp = (a2 - a1);
-			/* returns 1 if no mask available, 0 or 1 with mask */
-			maskVal = maskValue(trackPar, r1 * trackPar->scaleFactor, a1 * trackPar->scaleFactor);
-			maskVal = min(maskVal, 1); /* This is because I may put larger values in mask for runcull */
+			maskVal = 1;
 			nMask += maskVal;
 			/*
 			   Complex matching
@@ -251,7 +343,6 @@ void speckleTrack(TrackParams *trackPar)
 					large = FALSE;
 					ampWScale = 1;
 					ampType = AMPMATCH;
-					nAmp = &(trackPar->nAmp);
 					cThresh = 0.07;
 				}
 				else
@@ -259,7 +350,6 @@ void speckleTrack(TrackParams *trackPar)
 					large = TRUE;
 					ampWScale = LA;
 					ampType = AMPMATCHLARGE;
-					nAmp = &(trackPar->nAmpL);
 					cThresh = 0.028;
 				}
 				computeAmpImageLocations(trackPar, i, j, &r1a, &a1a, &r2a, &a2a, rShiftAmp, aShiftAmp, trackPar->wA, trackPar->wR, ampWScale);
@@ -267,7 +357,7 @@ void speckleTrack(TrackParams *trackPar)
 				{
 					haveData = getAmpPatches(r1a, a1a, r2a, a2a, fp1, fp2, trackPar, large);
 					if (haveData == TRUE)
-					{	
+					{		
 						//fprintf(stderr, "\nTrying amp match with window %i for line %i pixel %i %i\n", ampWScale, i, j, large);
 						ampMatch(trackPar, &iMax, &jMax, &cMax, large, i, j);
 						rShift1 = ((float)jMax - trackPar->wRa * 0.5 * OS * NOVER * ampWScale) * invNOVER / OS;
@@ -278,6 +368,7 @@ void speckleTrack(TrackParams *trackPar)
 						cMax = 0.0;
 						nSkip++;
 					}
+					if(j==0) fprintf(stderr,"a %i %f\n", good, cMax);
 				}
 				else
 				{
@@ -290,7 +381,13 @@ void speckleTrack(TrackParams *trackPar)
 					fabs((double)aShift1) < 0.15 * trackPar->wAa * OS * ampWScale && cMax > cThresh)
 				{
 					good = TRUE;
-					(*nAmp)++;
+					if (large == FALSE) {
+#pragma omp atomic
+						trackPar->nAmp++;
+					} else {
+#pragma omp atomic
+						trackPar->nAmpL++;
+					}
 					type = ampType;
 					cAvgAmp += cMax;
 					nAmpLine++;
@@ -307,8 +404,10 @@ void speckleTrack(TrackParams *trackPar)
 			{
 				rShift = -LARGEINT;
 				aShift = -LARGEINT;
-				if (haveData == TRUE)
+				if (haveData == TRUE) {
+#pragma omp atomic
 					trackPar->nFail++;
+				}
 			}
 			/* Save values */
 			//fprintf(stderr, "-----Line %i pixel %i type %i rShift %f aShift %f cMax %f %f %f\n", i, j, type, rShift, aShift, cMax, rShiftAmp, aShiftAmp	);
@@ -322,6 +421,7 @@ void speckleTrack(TrackParams *trackPar)
 			trackPar->corr[i][j] = cMax; /*cMax;*/
 			trackPar->type[i][j] = type; /*cMax;*/
 		}								 /* End for j=0... */
+		next_row:
 		writeOffsets(i, trackPar, fpR, fpA, fpC, fpAzD, fpT);
 		nTot += (trackPar->nR - nSkip);
 		if (nCorr > 0)
@@ -336,6 +436,13 @@ void speckleTrack(TrackParams *trackPar)
 			cAvgAmp = 0.0;
 		printLineSummary(nTot, a1, cAvg, cAvgAmp, nMask, lastTime, myStart, trackPar);
 	} /* End for i=0... */
+	free(r2_arr);
+	free(a2_arr);
+	{
+		extern void freePerThreadArrays(void);
+#pragma omp parallel
+		{ freePerThreadArrays(); }
+	}
 	fprintf(stderr, "\n\nTotal time %f\n", (time(NULL) - myStart) / 60.);
 	fclose(fpR);
 	fclose(fpA);
@@ -366,9 +473,9 @@ static int32_t complexMatch(TrackParams *trackPar, int32_t r1, int32_t a1, int32
 	/* Oversample peak; with oversamping or gaussian */
 	if (trackPar->gaussFlag == TRUE)
 	{
-		fftwnd_one(trackPar->cReverseNoPad, psNoPad[0], cNoPad[0]);
+		fftwnd_one(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
 		findCPeak(cNoPadMag, cNoPad, trackPar->wR * OS, trackPar->wA * OS, iMax, jMax, cMax);
-		cmpTrackGauss(trackPar, iMax, jMax, cMax, trackPar->wR, trackPar->wA, cNoPadMag, trackPar->p1, trackPar->p2, TRUE, 1);
+		cmpTrackGauss(trackPar, iMax, jMax, cMax, trackPar->wR, trackPar->wA, cNoPadMag, tp_p1, tp_p2, TRUE, 1);
 	}			
 	else
 	{   // Standard oversampling mode	
@@ -380,7 +487,7 @@ static int32_t complexMatch(TrackParams *trackPar, int32_t r1, int32_t a1, int32
 	trackPar->aZDefocus[iOut][jOut] = -LARGEINT;
 	if((iM - NGAUSS/2) >= 0 && (iM + NGAUSS/2) < (trackPar->wA * OS) &&
 		(jM - NGAUSS/2) >= 0 && (jM + NGAUSS/2) < (trackPar->wR * OS))
-	{
+	{ 
 		gaussPeak1D(trackPar, cNoPadMag, iM, jM, *cMax, RG, &sigmaRg, &peakRatioRg);	
 		gaussPeak1D(trackPar, cNoPadMag, iM, jM, *cMax, AZ, &sigmaAz, &peakRatioAz);
 		//fprintf(stderr, "\n\nLine %i Pixel %i Complex match sigmaRg %f sigmaAz %f peakRatioRg %f peakRatioAz %f\n\n", iOut, jOut, sigmaRg, sigmaAz, peakRatioRg, peakRatioAz);	
@@ -441,8 +548,8 @@ static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double
 	{
 		for (j = 0; j < wR * OS; j++)
 		{
-			im1[i][j].re = sqrt(im1[i][j].re);
-			im2[i][j].re = sqrt(im2[i][j].re);
+			im1[i][j].re = (im1[i][j].re > 0.0) ? sqrt(im1[i][j].re) : 0.0;
+			im2[i][j].re = (im2[i][j].re > 0.0) ? sqrt(im2[i][j].re) : 0.0;
 			avgAmp1 += im1[i][j].re;
 			avgAmp2 += im2[i][j].re;
 		}
@@ -534,13 +641,15 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	findCPeak(caNoPadM, caNoP, wR * OSA, wA * OSA, iMax, jMax, cMax);
 	// 
 	//fprintf(stderr, " Amp match peak at i %i j %i cMax %f\n", *iMax, *jMax, *cMax); 
-	trackPar->aZDefocus[i][j] = -LARGEINT;
+	trackPar->aZDefocus[iOut][jOut] = -LARGEINT;
 	if(*iMax > NGAUSS/2 && *iMax < (wA * OSA - NGAUSS/2) &&
 	   *jMax > NGAUSS/2 && *jMax < (wR * OSA - NGAUSS/2))
 	{
-		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, RG, &sigmaRg, &peakRatioRg);	
-		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, AZ, &sigmaAz, &peakRatioAz);	
-		//fprintf(stderr, "\n\n..Line %i Pixel %i Complex match sigmaRg %f sigmaAz %f peakRatioRg %f peakRatioAz %f\n\n", iOut, jOut, sigmaRg, sigmaAz, peakRatioRg, peakRatioAz);	
+		//fprintf(stderr, "-;");
+		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, RG, &sigmaRg, &peakRatioRg);
+		gaussPeak1D(trackPar, caNoPadM, *iMax, *jMax, cMaxTmp, AZ, &sigmaAz, &peakRatioAz);
+		//fprintf(stderr, "..\n");
+		//fprintf(stderr, "\n\n..Line %i Pixel %i Complex match sigmaRg %f sigmaAz %f peakRatioRg %f peakRatioAz %f\n\n", iOut, jOut, sigmaRg, sigmaAz, peakRatioRg, peakRatioAz);
 		// Use ratio of sigmas to determine az defocus
 		trackPar->aZDefocus[iOut][jOut] = sigmaAz/sigmaRg;
 	}
@@ -620,8 +729,8 @@ static void cmpPSWithPad(TrackParams *trackPar)
 	for (i = 0; i < trackPar->wA / 2; i++)
 	{
 		i1 = OSA * trackPar->wA - trackPar->wA / OSA + i;
-		i2 = (trackPar->wA / OSA + i + trackPar->azShift) % trackPar->wA;
-		ia = (i + trackPar->azShift) % trackPar->wA;
+		i2 = (trackPar->wA / OSA + i + tp_azShift) % trackPar->wA;
+		ia = (i + tp_azShift) % trackPar->wA;
 		j1 = trackPar->wR * OSA - trackPar->wR / OSA;
 		j2 = trackPar->wR / OSA + trackPar->rangeShift;
 		for (j = 0; j < trackPar->wR / 2; j++)
@@ -661,7 +770,7 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	else
 		hanningCorrection = 1.0;
 	/*   FFT to get correlation function */
-	fftwnd_one(trackPar->cReverseNoPad, psNoPad[0], cNoPad[0]);
+	fftwnd_one(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
 	/*  Find correlation peak */
 	*cMax = 0.;
 	findCPeak(cNoPadMag, cNoPad, trackPar->wR * OSA, trackPar->wA * OSA, iMax, jMax, cMax);
@@ -702,7 +811,7 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	osF = 1.;
 	// Normalize for oversampling. 
 	*cMax =  *cMax/ (NFAST*NFAST);
-	*cMax = hanningCorrection * (*cMax)  / (sqrt(trackPar->p1 * trackPar->p2) * pow(trackPar->wR * trackPar->wA, 2));
+	*cMax = hanningCorrection * (*cMax)  / (sqrt(tp_p1 * tp_p2) * pow(trackPar->wR * trackPar->wA, 2));
 	// Finally compute offsets
 	*iMax = (*iMax * NOVER) + iMax1 - (NOVER * NFAST) / 2;
 	*jMax = (*jMax * NOVER) + jMax1 - (NOVER * NFAST) / 2;
@@ -732,6 +841,7 @@ static void finalizeCmpxMatch(double cMax, int32_t iMax, int32_t jMax, double wR
 			fabs((double)*aShift1) < 0.125 * trackPar->wA * OS)
 		{
 			*good = TRUE;
+#pragma omp atomic
 			trackPar->nComplex++;
 			*type = CMATCH;
 		}
@@ -855,11 +965,11 @@ static void overSampleC(TrackParams *trackPar)
 	extern fftw_complex **cFast, **cFastOver;
 	int32_t i, j;
 	int32_t i1, i2, j1, j2;
-	fftwnd_one(trackPar->cForwardFast, cFast[0], psFast[0]);
+	fftwnd_one(tp_cForwardFast, cFast[0], psFast[0]);
 	/* Zero pad fft for over sampling	*/
 	zeroPadFFT(psFastOver, NFAST * NOVER, NFAST * NOVER, psFast, NFAST, NFAST, 0, 0);
 	/* Inverse transform */
-	fftwnd_one(trackPar->cReverseFast, psFastOver[0], cFastOver[0]);
+	fftwnd_one(tp_cReverseFast, psFastOver[0], cFastOver[0]);
 }
 
 /*
@@ -943,7 +1053,7 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 				}
 			}
 			/* FFT PATCH */
-			fftwnd_one(trackPar->intDat.forward, intPatch[0], fftIntPatch[0]);
+			fftwnd_one(tp_intForward, intPatch[0], fftIntPatch[0]);
 			/* Find Peak in interferogram */
 			maxf = 0.;
 			for (i = 0; i < trackPar->intDat.patchSize; i++)
@@ -969,7 +1079,7 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 			zeroPadFFT(fftIntPatchOver, patchSize * trackPar->intDat.nal * trackPar->osF,
 					   patchSize * trackPar->intDat.nrl * trackPar->osF, fftIntPatch, patchSize, patchSize, 0, 0);
 			/* Inverse transform */
-			fftwnd_one(trackPar->intDat.backward, fftIntPatchOver[0], intPatchOver[0]);
+			fftwnd_one(tp_intBackward, fftIntPatchOver[0], intPatchOver[0]);
 			/* NOw do correction */
 			i1 = (patchSize * trackPar->intDat.nal * trackPar->osF) / 2 - trackPar->wA * trackPar->osF / 2;
 			for (i = 0; i < trackPar->wA * trackPar->osF; i++)
@@ -1138,12 +1248,10 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	azShift = 0;  // Default
 
 	// If not computed for complex match, compute for smaller amp patch (12/3/25)
-	if(trackPar->noComplex == TRUE && large == FALSE) 
-	{
-		estDopCarrier1(trackPar, im1in, im2in, trackPar->wAa, trackPar->wRa);
-	} 
+	if(trackPar->noComplex == TRUE && large == FALSE)
+		tp_azShift = estDopCarrier1(trackPar, im1in, im2in, trackPar->wAa, trackPar->wRa);
 	// Scale offset for complex patch to current patch size
-	azShift = (int)((float)trackPar->azShift * (float)wAa / (float)trackPar->wA);
+	azShift = (int)((float)tp_azShift * (float)wAa / (float)trackPar->wA);
 	rangeShift = (int)((float)trackPar->rangeShift * (float)wRa / (float)trackPar->wR);
 	/*
 	  Zero pad fft for over sampling
@@ -1311,11 +1419,12 @@ static int32_t getPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *
 		fprintf(stderr, "Patch power too low: p1 %e p2 %e\n", p1, p2);
 		return (FALSE);
 	}
-	// Carrier estimation
-	estDopCarrier1(trackPar, patch1Use, patch2Use, trackPar->wA, trackPar->wR);
-	/* Scale and compute power */
-	trackPar->p1 = p1 / (double)(trackPar->wA * trackPar->wR);
-	trackPar->p2 = p2 / (double)(trackPar->wA * trackPar->wR);
+	/* Capture azShift and power into threadprivate — skip the trackPar fields entirely
+	 * to avoid the race where another thread overwrites trackPar->azShift/p1/p2 before
+	 * this thread can read them back. */
+	tp_azShift = estDopCarrier1(trackPar, patch1Use, patch2Use, trackPar->wA, trackPar->wR);
+	tp_p1      = p1 / (double)(trackPar->wA * trackPar->wR);
+	tp_p2      = p2 / (double)(trackPar->wA * trackPar->wR);
 	return (TRUE);
 	/*
 	char debugFile[128];
@@ -1337,12 +1446,17 @@ static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
     CPLErr err;
 	GDALDataType myType;
 
+	if (a1 < 0 || a1 >= imageP1->nSlpA) return;   /* out-of-bounds; leave buffer as-is */
 	if (sSize == sizeof(fftw_complex))
     	myType = GDT_CFloat32;
 	else
     	myType = GDT_CInt16;
     if (a1 < imageBuf1->firstRow || (a1 + wAa) > imageBuf1->lastRow)
     {
+#pragma omp critical(imagebuf_reload)
+		{
+		if (a1 < imageBuf1->firstRow || (a1 + wAa) > imageBuf1->lastRow)
+		{
         a1a = max(0, a1 - trackPar->wAa * LA);
         nLinesToRead = min(imageP1->nSlpA - a1a, NBUFFERLINES);
         err = GDALRasterIO(hBand, GF_Read,
@@ -1359,7 +1473,8 @@ static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
         }
         imageBuf1->firstRow = a1a;
         imageBuf1->lastRow = a1a + nLinesToRead - 1;
-		//fprintf(stderr, "Loaded VRT buffer: rows %d to %d %d\n", a1a, a1a + nLinesToRead - 1, nLinesToRead);
+		}
+		} /* end omp critical */
     }
 }
 
@@ -1371,29 +1486,34 @@ static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trac
 {
 	size_t a1a, s1, offset1;
 
+	if (a1 < 0 || a1 >= imageP1->nSlpA) return;   /* out-of-bounds; leave buffer as-is */
 	if (a1 < imageBuf1->firstRow || (a1 + wAa) > imageBuf1->lastRow)
 	{
-		a1a = max(0, a1 - trackPar->wAa * LA);
-		s1 = imageP1->nSlpR * min(imageP1->nSlpA - a1a, NBUFFERLINES);
-		offset1 = ((off_t)a1a * imageP1->nSlpR) * (off_t)sSize;
-		fseeko(fp1, offset1, SEEK_SET);
-		if (trackPar->floatFlag == TRUE) {
-			if(trackPar->byteOrder == MSB)
-			{
-				freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, FLOAT32FLAG);
-			} else {
-				size_t rv = fread((void *)imageBuf1->buf[0], sSize, s1, fp1);
-			}
-		} else 
+#pragma omp critical(imagebuf_reload)
 		{
-			freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, INT16FLAG);	
-		}		
-		imageBuf1->firstRow = a1a;
-		imageBuf1->lastRow = a1a + min(imageP1->nSlpA - a1a, NBUFFERLINES) - 1;
-
-			fprintf(stderr, "Loaded XX buffer: rows %ld to %ld %ld\n", a1a, a1a + s1 - 1, s1);
-fftw_complex **x = (fftw_complex **)imageBuf1->buf;
-fprintf(stderr,"%f %f %f %f\n", 	x[1][1].re, x[1][1].im, x[500][500].re, x[500][500].im);
+		/* Re-check inside the critical section: another thread may have already
+		 * reloaded this buffer by the time we get here. */
+		if (a1 < imageBuf1->firstRow || (a1 + wAa) > imageBuf1->lastRow)
+		{
+			a1a = max(0, a1 - trackPar->wAa * LA);
+			s1 = imageP1->nSlpR * min(imageP1->nSlpA - a1a, NBUFFERLINES);
+			offset1 = ((off_t)a1a * imageP1->nSlpR) * (off_t)sSize;
+			fseeko(fp1, offset1, SEEK_SET);
+			if (trackPar->floatFlag == TRUE) {
+				if(trackPar->byteOrder == MSB)
+				{
+					freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, FLOAT32FLAG);
+				} else {
+					(void)fread((void *)imageBuf1->buf[0], sSize, s1, fp1);
+				}
+			} else
+			{
+				freadBS((void *)imageBuf1->buf[0], sSize, s1, fp1, INT16FLAG);
+			}
+			imageBuf1->firstRow = a1a;
+			imageBuf1->lastRow = a1a + min(imageP1->nSlpA - a1a, NBUFFERLINES) - 1;
+		}
+		} /* end omp critical */
 	}
 
 }
@@ -1840,8 +1960,8 @@ static void computeHanning(TrackParams *trackPar)
 		wi = 0.5 * (1.0 + cos((2.0 * PI) * (double)i / (double)(trackPar->wA - 1)));
 		for (j = 0; j < trackPar->wR / 2; j++)
 		{
-			j1 = trackPar->wA / 2 + j;
-			j2 = trackPar->wA / 2 - j - 1;
+			j1 = trackPar->wR / 2 + j;
+			j2 = trackPar->wR / 2 - j - 1;
 			wj = 0.5 * (1.0 + cos((2.0 * PI) * (double)j / (double)(trackPar->wR - 1)));
 			hanning[i1][j1] = wi * wj;
 			hanning[i2][j2] = wi * wj;
@@ -2061,35 +2181,6 @@ static void zeroFloat(float **x, int32_t na, int32_t nr)
 /*
   Legacy code to remove estimate any range carrier.
  */
-static void estRangeCarrier(TrackParams *trackPar)
-{
-	extern fftw_complex **patch1in, **patch2in;
-	double sp, minS;
-	fftw_complex cgrad;
-	double angle;
-	int32_t iMin;
-	int32_t i, j;
-	FILE *fp1;
-	fftw(trackPar->onedForward1R, trackPar->wA, patch1in[0], 1, trackPar->wR, f1[0], 1, trackPar->wR);
-	fftw(trackPar->onedForward2R, trackPar->wA, patch2in[0], 1, trackPar->wR, f2[0], 1, trackPar->wR);
-	minS = 2.0e30;
-	iMin = 0;
-	for (j = 0; j < trackPar->wR; j++)
-	{
-		sp = 0.;
-		for (i = 0; i < trackPar->wA; i++)
-		{
-			sp += absCmpx(f1[i][j], TRUE);
-			sp += absCmpx(f2[i][j], TRUE);
-		}
-		if (sp < minS)
-		{
-			iMin = j;
-			minS = sp;
-		}
-	}
-	trackPar->rangeShift = (iMin + trackPar->wR / 2) % trackPar->wR;
-}
 
 
 /* ANSI C (C89) */
@@ -2129,6 +2220,14 @@ float *gaussCorr1D = NULL;
 float *sigGauss1D = NULL;
 float **alpha1D, **covarm1D;
 float iSigSave = 2.50, jSigSave = 2.5;
+#pragma omp threadprivate(peakXY, peakX, gaussCorr, sigGauss, alpha, covarm, \
+    gaussCorr1D, sigGauss1D, alpha1D, covarm1D, iSigSave, jSigSave)
+
+/* mrqminMod persistent state — promoted from function-static to file-scope globals
+ * so they can be made threadprivate (OpenMP threadprivate requires file-scope variables). */
+static int32_t mrq_mfit;
+static float mrq_ochisq, *mrq_atry, *mrq_beta, *mrq_da, **mrq_oneda;
+#pragma omp threadprivate(mrq_mfit, mrq_ochisq, mrq_atry, mrq_beta, mrq_da, mrq_oneda)
 
 /*
 Experimental peak fitting with gaussian - not well tested. Correlation peaks not quite right.
@@ -2183,19 +2282,30 @@ static void gaussPeak1D(TrackParams *trackPar, float**cMag, int32_t iMax, int32_
 	{
 		gaussCorr1D[i+1] /= maxC;
 	}
+	float center0 = peakX[NGAUSS/2 + 1].x;
 	alamada = -1.;
 	a[1] = 1;
-	a[2] = peakX[NGAUSS/2 + 1].x;
+	a[2] = center0;
 	a[3] = 2;
 	lasti = 2e9;
 	//fprintf(stderr, "a[1] %f a[2] %f a[3] %f\n", a[1], a[2], a[3]);
 	for (i = 0; i < 5; i++)
 	{
 		mrqminMod(peakX, gaussCorr1D, sigGauss1D, iData - 1, a, ia, 3, covarm1D, alpha1D, &chisq, &myGauss1D, &alamada);
+		/* Reset if parameters become unphysical — prevents gaussj singularity on next iteration.
+		 * Sigma explosion (a[3] >> 1) collapses dyda[2/3] to near-zero, making alpha rank-1.
+		 * Sigma collapse (a[3] < 0.1) similarly zeroes those gradients. */
+		if (a[3] < 0.1 || a[3] > 20.0 || !isfinite(a[3]) ||
+		    !isfinite(a[1]) || a[1] < 0.01 ||
+		    fabsf(a[2] - center0) > (float)NGAUSS) {
+			a[1] = 1.0;
+			a[2] = center0;
+			a[3] = 2.0;
+			alamada = -1.0;
+		}
 		if (fabs(a[2] - lasti) < 0.001 )
 			break; /* With NOVER ~ 0.001 */
 		lasti = a[2];
-		//fprintf(stderr, "a[1] %f a[2] %f a[3] %f\n", a[1], a[2], a[3]);
 	}
 	*sigma = a[3]*.5;
 	*peakRatio = a[1];
@@ -2355,63 +2465,77 @@ void mrqminMod(xyData x[], float y[], float sig[], int32_t ndata, float a[], int
 			   void (*funcs)(xyData x, float[], float *, float[], int), float *alamda)
 {
 	int32_t j, k, l, i;
-	static int32_t mfit;
-	static float ochisq, *atry, *beta, *da, **oneda;
 	if (*alamda < 0.0)
 	{
-		atry = vector(1, ma);
-		beta = vector(1, ma);
-		da = vector(1, ma);
-		for (mfit = 0, j = 1; j <= ma; j++)
+		mrq_atry = vector(1, ma);
+		mrq_beta = vector(1, ma);
+		mrq_da = vector(1, ma);
+		for (mrq_mfit = 0, j = 1; j <= ma; j++)
 			if (ia[j])
-				mfit++;
-		oneda = matrix(1, mfit, 1, 1);
+				mrq_mfit++;
+		mrq_oneda = matrix(1, mrq_mfit, 1, 1);
 		*alamda = 0.001;
-		mrqcofMod(x, y, sig, ndata, a, ia, ma, alpha, beta, chisq, funcs);
-		ochisq = (*chisq);
+		mrqcofMod(x, y, sig, ndata, a, ia, ma, alpha, mrq_beta, chisq, funcs);
+		mrq_ochisq = (*chisq);
 		for (j = 1; j <= ma; j++)
-			atry[j] = a[j];
+			mrq_atry[j] = a[j];
 	}
-	for (j = 1; j <= mfit; j++)
+	for (j = 1; j <= mrq_mfit; j++)
 	{
-		for (k = 1; k <= mfit; k++)
+		for (k = 1; k <= mrq_mfit; k++)
 			covar[j][k] = alpha[j][k];
 		covar[j][j] = alpha[j][j] * (1.0 + (*alamda));
-		oneda[j][1] = beta[j];
+		mrq_oneda[j][1] = mrq_beta[j];
 	}
-	gaussj(covar, mfit, oneda, 1);
-	for (j = 1; j <= mfit; j++)
-		da[j] = oneda[j][1];
+	/* Guard: bail out if diagonal spread exceeds float precision.
+	 * Condition number > 1e8 means single-precision Gauss-Jordan will
+	 * produce exact zeros — treat as a failed LM step (increase alamda). */
+	{
+		int _jj;
+		float _cmax = 0.0f, _cmin = 1e38f;
+		for (_jj = 1; _jj <= mrq_mfit; _jj++) {
+			if (covar[_jj][_jj] > _cmax) _cmax = covar[_jj][_jj];
+			if (covar[_jj][_jj] > 0.0f && covar[_jj][_jj] < _cmin) _cmin = covar[_jj][_jj];
+		}
+		if (_cmin <= 0.0f || _cmax > 1.0e8f * _cmin) {
+			*alamda *= 10.0;
+			*chisq = mrq_ochisq;
+			return;
+		}
+	}
+	gaussj(covar, mrq_mfit, mrq_oneda, 1);
+	for (j = 1; j <= mrq_mfit; j++)
+		mrq_da[j] = mrq_oneda[j][1];
 	if (*alamda == 0.0)
 	{
-		covsrt(covar, ma, ia, mfit);
-		free_matrix(oneda, 1, mfit, 1, 1);
-		free_vector(da, 1, ma);
-		free_vector(beta, 1, ma);
-		free_vector(atry, 1, ma);
+		covsrt(covar, ma, ia, mrq_mfit);
+		free_matrix(mrq_oneda, 1, mrq_mfit, 1, 1);
+		free_vector(mrq_da, 1, ma);
+		free_vector(mrq_beta, 1, ma);
+		free_vector(mrq_atry, 1, ma);
 		return;
 	}
 	for (j = 0, l = 1; l <= ma; l++)
 		if (ia[l])
-			atry[l] = a[l] + da[++j];
-	mrqcofMod(x, y, sig, ndata, atry, ia, ma, covar, da, chisq, funcs);
-	if (*chisq < ochisq)
+			mrq_atry[l] = a[l] + mrq_da[++j];
+	mrqcofMod(x, y, sig, ndata, mrq_atry, ia, ma, covar, mrq_da, chisq, funcs);
+	if (*chisq < mrq_ochisq)
 	{
 		*alamda *= 0.1;
-		ochisq = (*chisq);
-		for (j = 1; j <= mfit; j++)
+		mrq_ochisq = (*chisq);
+		for (j = 1; j <= mrq_mfit; j++)
 		{
-			for (k = 1; k <= mfit; k++)
+			for (k = 1; k <= mrq_mfit; k++)
 				alpha[j][k] = covar[j][k];
-			beta[j] = da[j];
+			mrq_beta[j] = mrq_da[j];
 		}
 		for (l = 1; l <= ma; l++)
-			a[l] = atry[l];
+			a[l] = mrq_atry[l];
 	}
 	else
 	{
 		*alamda *= 10.0;
-		*chisq = ochisq;
+		*chisq = mrq_ochisq;
 	}
 }
 #undef NRANSI

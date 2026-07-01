@@ -4,9 +4,10 @@
 #include "speckleSource/Strack/strack.h"
 #include "strackw.h"
 #include "math.h"
+#include <omp.h>
 
 double SLat = -91.;
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder);
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -30,11 +31,18 @@ int main(int argc, char *argv[])
 	TrackParams trackPar;
 	int32_t noComplex;
 	int32_t floatFlag;
+	int32_t nThreads;
 	stateV sv1, sv2;
 	int32_t byteOrder;
 	GDALDatasetH hDS1, hDS2;
 	GDALAllRegister();
-	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder);
+	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder, &nThreads);
+	if (nThreads > 0) {
+		omp_set_num_threads(nThreads);
+		fprintf(stderr, "\033[1;3;34mompThreads set to %d\033[0m\n", nThreads);
+	} else {
+		fprintf(stderr, "\033[1;3;34mompThreads using default (%d)\033[0m\n", omp_get_max_threads());
+	}
 	trackPar.floatFlag = floatFlag;
 	trackPar.noComplex = TRUE;
 	trackPar.byteOrder = byteOrder;
@@ -72,7 +80,7 @@ int main(int argc, char *argv[])
 		parseSLCVrtNew(trackPar.vrtFile2, &(trackPar.imageP2), &sv2, &byteOrder, &hDS2, &trackPar.hBand2);
 		trackPar.fpI2 = NULL;
 	}
-	else error("Could not read par or vrt file for image 1\n");
+	else error("Could not read par or vrt file for image 2\n");
 
 
 	if(trackPar.parFile1 != NULL) 
@@ -126,14 +134,15 @@ fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	corrTrackFast(&trackPar);
 }
 
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder)
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads)
 {
 	int32_t n, i;
 	char *argString;
 	*floatFlag = TRUE;
 	*byteOrder = MSB;
-	if (argc < 2 || argc > 4)
-		usage(); /* Check number of args */
+	*nThreads = 2;
+	if (argc < 2)
+		usage();
 	*parFile = argv[argc - 1];
 	n = argc - 2;
 	for (i = 1; i <= n; i++)
@@ -141,8 +150,16 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag,
 		argString = strchr(argv[i], '-');
 		if (strstr(argString, "integerComplex") != NULL)
 			*floatFlag = FALSE;
-		else if (strstr(argString, "-LSB") != NULL)
+		else if (strstr(argString, "LSB") != NULL)
 			*byteOrder = LSB;
+		else if (strstr(argString, "ompThreads") != NULL)
+		{
+			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '\0')
+			{
+				sscanf(argv[i + 1], "%d", nThreads);
+				i++;
+			}
+		}
 		else
 			usage();
 	}
@@ -151,5 +168,5 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag,
 
 static void usage()
 {
-	error("sTrack -integerComplex -LSB parFile \n\tLSB  use LSB for both output and flaoting point input\n");
+	error("strackw -integerComplex -LSB -ompThreads N parFile \n\tLSB  use LSB for both output and floating point input\n\tompThreads N  use N OpenMP threads (default 2)\n");
 }

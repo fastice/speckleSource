@@ -1,14 +1,23 @@
 CC =		gcc
-CFLAGS  =	$(FLAGS) -c -DPAF=$(PAF) -I$(INCLUDEPATH)
+MACHTYPE =	$(shell uname -m)
+OSTYPE =	$(shell uname -s)
+OBJDIR =	$(MACHTYPE)-$(OSTYPE)
 
-OBJS= cullst.o loadCullData.o cullSTData.o writeCullData.o cullStats.o \
-cullSmooth.o cullIslands.o
+$(shell mkdir -p $(OBJDIR))
 
-MACHTYPE = $(shell uname -m)
-OSTYPE = $(shell uname -s)
+CFLAGS =	$(FLAGS) -c -DPAF=$(PAF) -I$(INCLUDEPATH) -MMD -MP -fopenmp
 
-$(shell mkdir -p $(MACHTYPE)-$(OSTYPE))
+SRCS =	cullst.c loadCullData.c cullSTData.c writeCullData.c cullStats.c \
+	cullSmooth.c cullIslands.c cullStatsSmooth.c
+
+OBJS =	$(SRCS:%.c=$(OBJDIR)/%.o)
+
+all:	$(OBJS)
+
+-include $(OBJS:.o=.d)
 
 .KEEP_STATE:
-all:	$(OBJS)
-	mv *.o $(MACHTYPE)-$(OSTYPE)
+
+
+$(OBJDIR)/%.o: %.c
+	$(CC) $(CFLAGS) $< -o $@

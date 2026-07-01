@@ -177,4 +177,4 @@ void writeVrtFile(TrackParams *trackPar);
  //                   int dataTypes[], char *byteSwapOption, int32_t nBands);
 int readBothOffsetsStrackVrt(Offsets *offsets, char *vrtFile);
 void readBothOffsetsStrack(Offsets *offsets);
-void estDopCarrier1(TrackParams *trackPar,  fftw_complex **image1, fftw_complex **image2, int32_t nAz, int32_t nRg);
+int32_t estDopCarrier1(TrackParams *trackPar,  fftw_complex **image1, fftw_complex **image2, int32_t nAz, int32_t nRg);

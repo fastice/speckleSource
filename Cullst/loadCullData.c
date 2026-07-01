@@ -138,7 +138,7 @@ void loadCullData(CullParams *cullPar)
 	FILE *fp;
 	char line[1024];
 	char **split;
-	int32_t lineCount, eod, i, j;
+	int32_t lineCount = 0, eod, i, j;
 	int32_t r0, a0, nr, na;
 	int32_t deltaA, deltaR;
 	/*
@@ -209,7 +209,7 @@ void loadSimData(CullParams *cullPar)
 {
 	FILE *fp;
 	char line[1024];
-	int32_t lineCount, eod, i, j;
+	int32_t lineCount = 0, eod, i, j;
 	int32_t r0, a0, nr, na;
 	int32_t deltaA, deltaR;
 
@@ -232,7 +232,7 @@ int32_t loadCullMask(CullParams *cullPar)
 {
 	FILE *fp, *fpD;
 	char line[1024];
-	int32_t lineCount, eod, i, j;
+	int32_t lineCount = 0, eod, i, j;
 	int32_t r0, a0, nr, na;
 	int32_t deltaA, deltaR;
 
