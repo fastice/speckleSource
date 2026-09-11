@@ -308,7 +308,7 @@ CULLLS  =	Cullls/$(MACHTYPE)-$(OSTYPE)/loadLSCullData.o \
 			Cullls/$(MACHTYPE)-$(OSTYPE)/cullLSIslands.o
 
 LANDSATMOSAIC =		$(PROGDIR)/mosaicSource/landsatMosaic/$(MACHTYPE)-$(OSTYPE)/readLSOffsets.o
-CULLLSDIRS =	Cullls $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/unwrapSource/unWrap $(PROGDIR)/mosaicSource/landsatMosaic
+CULLLSDIRS =	Cullls $(PROGDIR)/clib $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/cRecipes $(PROGDIR)/unwrapSource/unWrap $(PROGDIR)/mosaicSource/landsatMosaic
 
 cullls:
 	@for i in ${CULLLSDIRS}; do \
@@ -318,7 +318,7 @@ cullls:
 			cd $(PROGDIR)/speckleSource; \
 		); done
 		g++ $(MEM) $(CCFLAGS1) \
-                Cullls/$(MACHTYPE)-$(OSTYPE)/cullls.o $(CULLLS) $(STANDARD) $(RECIPES) $(UNWRAP) $(LANDSATMOSAIC) \
+                Cullls/$(MACHTYPE)-$(OSTYPE)/cullls.o $(CULLLS) $(STANDARD) $(RECIPES) $(UNWRAP) $(LANDSATMOSAIC) $(GDALIO) \
                 -lm  $(GDAL) -o $(BINDIR)/cullls
 
 TESTDIRS =	test

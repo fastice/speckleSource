@@ -26,6 +26,7 @@ typedef struct
     int32_t nAttempt;
     int32_t nAfterCull;
     int32_t nMatch;
+    int32_t tiffFlag; /* Write culled products as GeoTIFF + VRT rather than raw */
 } CullLSParams;
 
 void loadLSCullData(CullLSParams *cullPar);
