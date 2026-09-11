@@ -36,14 +36,28 @@ char *appendSuffix(char *file, char *suffix, char *buf)
 	return buf;
 }
 
+/*
+ * Likewise fileExists, which readLSOffsets.c uses to spot a GeoTIFF. It lives
+ * in mosaicSource/common/initRoutines.c, which mosaic3d links but cullls does
+ * not.
+ */
+int fileExists(const char *filename, int abort)
+{
+	FILE *fp = fopen(filename, "r");
+	if (fp)
+	{
+		fclose(fp);
+		return TRUE;
+	}
+	if (abort == TRUE)
+		error("Cannot open %s", filename);
+	return FALSE;
+}
+
 int main(int argc, char *argv[])
 {
 	CullLSParams cullPar;
 
-	/* Every other GDAL-using program in the tree registers the drivers at the
-	   top of main (strack.c:59, cullst.c:39, ...). cullls did not, because it
-	   had no GDAL output until -tiff. */
-	GDALAllRegister();
 	readArgs(argc, argv, &cullPar);
 	fprintf(stderr, "cullIslandThresh %i\n", cullPar.islandThresh);
 	/*
@@ -95,8 +109,25 @@ int main(int argc, char *argv[])
    and the mosaic reader expect. That is deliberately not Cullst's deriveTif(),
    which strips the extension and substitutes a band role.
 *******************************************************************************************/
+/*
+  GDALAllRegister loads every driver and the PROJ database - about 6 s of system
+  time - so it is done on first actual GDAL use rather than at startup. Calling
+  it unconditionally in main() quadrupled the CPU cost of a raw-mode run, which
+  matters because runlscull runs 32 of these at once.
+*/
+static void ensureGDALRegistered(void)
+{
+	static int32_t gdalRegistered = FALSE;
+	if (gdalRegistered == FALSE)
+	{
+		GDALAllRegister();
+		gdalRegistered = TRUE;
+	}
+}
+
 static void writeLSCulledTiffs(CullLSParams *cullPar, int32_t nx, int32_t ny)
 {
+	ensureGDALRegistered();
 	double geoTransform[6];
 	char epsg[32], tifName[2048], vrtName[2048];
 	const char *bands[4];
