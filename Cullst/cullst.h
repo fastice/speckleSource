@@ -1,5 +1,12 @@
 #include <stdio.h>
 
+/* Tracking mask cullst reads from the current directory. siminsar writes the
+   raw offsets.mask in the legacy path, but with -tiff it writes only
+   offsets.mask.tif + offsets.mask.vrt, so both forms have to be recognised or
+   a tiff-mode run culls unmasked without saying so. */
+#define OFFSETS_MASK "offsets.mask"
+#define OFFSETS_MASK_VRT "offsets.mask.vrt"
+#define OFFSETS_DAT "offsets.dat"
 
 typedef struct
 {
@@ -56,6 +63,7 @@ typedef struct
     dictNode *metaData;
     dictNode *metaDataMT;
     float corrThresh;
+    int32_t tiffFlag;   /* Write outputs as GeoTIFF wrapped by the VRT */
 } CullParams;
 void cullSmooth(CullParams *cullPar);
 void writeCullData(CullParams *cullPar);

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <omp.h>
+#include "mosaicSource/common/common.h"
 
 #define LARGEINT -2e9
 static char **mallocByteMat(int32_t nA, int32_t nR);
@@ -60,7 +61,8 @@ int main(int argc, char *argv[])
 	/*
 	  load mask
 	*/
-	if (access("offsets.mask", F_OK) != -1 && cullPar.ignoreOffsets == FALSE)
+	if ((fileExists(OFFSETS_MASK, FALSE) || fileExists(OFFSETS_MASK_VRT, FALSE)) &&
+		cullPar.ignoreOffsets == FALSE)
 	{
 		/* read mask file if it is the same size, if not skip, and set flag FALSE */
 		cullPar.maskFlag = loadCullMask(&cullPar);
@@ -147,6 +149,7 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar, int32_t *nThre
 	islandThresh = -1;
 	cullPar->ignoreOffsets = FALSE;
 	cullPar->useSim = FALSE;
+	cullPar->tiffFlag = FALSE;
 	corrThresh = 0.0;
 	*nThreads = 4;
 
@@ -217,6 +220,10 @@ static void readArgs(int argc, char *argv[], CullParams *cullPar, int32_t *nThre
 		else if (strstr(argString, "ignoreOffsets") != NULL)
 		{
 			cullPar->ignoreOffsets = TRUE;
+		}
+		else if (strstr(argString, "tiff") != NULL)
+		{
+			cullPar->tiffFlag = TRUE;
 		}
 		else if (strstr(argString, "ompThreads") != NULL)
 		{

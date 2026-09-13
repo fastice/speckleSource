@@ -228,6 +228,48 @@ void loadSimData(CullParams *cullPar)
 	loadFile((void **)cullPar->offSimA, cullPar->inFileSimA, sizeof(float), nr, na, FLOAT32FLAG);
 }
 
+/*
+   Read the tracking mask through offsets.mask.vrt, for a tiff-backed directory
+   where siminsar -tiff never wrote the raw offsets.mask. Modelled on
+   getMaskVRT() in Strack/getMask.c; Cullst keeps its own copy because the two
+   programs' same-named files have deliberately diverged. The vrt carries its
+   own raster size, which replaces the offsets.dat size check the raw path does,
+   so the "not the same size: regoffsets ?" guard is preserved.
+*/
+static int32_t loadCullMaskVRT(CullParams *cullPar)
+{
+	GDALDatasetH hDS;
+	GDALRasterBandH hBand;
+	int32_t nr, na, status;
+
+	fprintf(stderr, "Found %s\n", OFFSETS_MASK_VRT);
+	hDS = GDALOpen(OFFSETS_MASK_VRT, GDAL_OF_READONLY);
+	if (hDS == NULL)
+	{
+		fprintf(stderr, "Ignoring mask: cannot open %s\n", OFFSETS_MASK_VRT);
+		return (FALSE);
+	}
+	hBand = GDALGetRasterBand(hDS, 1);
+	nr = GDALGetRasterBandXSize(hBand);
+	na = GDALGetRasterBandYSize(hBand);
+	if (cullPar->nA != na || cullPar->nR != nr)
+	{
+		fprintf(stderr, "Ignoring mask because it is not the same size: regoffsets ?\n");
+		GDALClose(hDS);
+		return (FALSE);
+	}
+	cullPar->mask = mallocByteMat(cullPar->nA, cullPar->nR);
+	status = GDALRasterIO(hBand, GF_Read, 0, 0, nr, na, cullPar->mask[0],
+						  nr, na, GDT_Byte, 0, 0);
+	GDALClose(hDS);
+	if (status != 0)
+	{
+		fprintf(stderr, "Ignoring mask: read of %s failed\n", OFFSETS_MASK_VRT);
+		return (FALSE);
+	}
+	return (TRUE);
+}
+
 int32_t loadCullMask(CullParams *cullPar)
 {
 	FILE *fp, *fpD;
@@ -236,13 +278,20 @@ int32_t loadCullMask(CullParams *cullPar)
 	int32_t r0, a0, nr, na;
 	int32_t deltaA, deltaR;
 
-	fprintf(stderr, "Found offsets.mask\n");
+	/* The raw path needs offsets.dat for its size check and openInputFile()
+	   aborts if it is missing, so take the vrt whenever the raw pair is not
+	   both present -- the vrt carries its own grid. */
+	if (fileExists(OFFSETS_MASK, FALSE) == FALSE || fileExists(OFFSETS_DAT, FALSE) == FALSE)
+	{
+		return (loadCullMaskVRT(cullPar));
+	}
+	fprintf(stderr, "Found %s\n", OFFSETS_MASK);
 	fprintf(stderr, "%d %d\n", cullPar->nA, cullPar->nR);
 	/* Read offsets.dat and check the file is the same - mostly to avoid mask register offsets - added 08/23/18 */
-	fpD = openInputFile("offsets.dat");
+	fpD = openInputFile(OFFSETS_DAT);
 	lineCount = getDataString(fpD, lineCount, line, &eod);
 	if (sscanf(line, "%i%i%i%i%i%i", &r0, &a0, &nr, &na, &deltaR, &deltaA) != 6)
-		error("%s  %i of %s\n%s", "readOffsets -- Missing image parameters at line:", lineCount, "offsets.dat", line);
+		error("%s  %i of %s\n%s", "readOffsets -- Missing image parameters at line:", lineCount, OFFSETS_DAT, line);
 	fclose(fpD);
 
 	if (cullPar->nA != na || cullPar->nR != nr)
@@ -251,7 +300,7 @@ int32_t loadCullMask(CullParams *cullPar)
 		return (FALSE);
 	}
 	cullPar->mask = mallocByteMat(cullPar->nA, cullPar->nR);
-	loadFile((void **)cullPar->mask, "offsets.mask", sizeof(char), nr, na, BYTEFLAG);
+	loadFile((void **)cullPar->mask, OFFSETS_MASK, sizeof(char), nr, na, BYTEFLAG);
 	return TRUE;
 }
 

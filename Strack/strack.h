@@ -74,6 +74,7 @@ typedef struct
 	char *outFileAzDefocus; /* Azimuth defocus ouput file */
 	char *vrtFile;
 	char *MTvrtFile;
+	int32_t tiffFlag;      /* Write outputs as GeoTIFF wrapped by the VRT */
 	char *maskFile;
 	char *maskGeodat;
 	char *maskvrt;
@@ -173,6 +174,7 @@ void writeOffsets(int32_t i, TrackParams *trackPar, FILE *fpR, FILE *fpA, FILE *
 void getInt(TrackParams *trackPar);
 void getMask(TrackParams *trackPar);
 void writeVrtFile(TrackParams *trackPar);
+void writeTiffFile(TrackParams *trackPar);
 //void writeSingleVRT(int32_t nR, int32_t nA, dictNode *metaData, char *vrtFile, char *bandFiles[], char *bandNames[],
  //                   int dataTypes[], char *byteSwapOption, int32_t nBands);
 int readBothOffsetsStrackVrt(Offsets *offsets, char *vrtFile);

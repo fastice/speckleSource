@@ -7,7 +7,7 @@ double SLat = -91.;
 
 static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex, int32_t *floatFlag,
 	int32_t *hanningFlag, int32_t *legacyFlag, int32_t *gaussFlag, int32_t *maxTries, int32_t *byteOrder, int32_t *checkAzFocus,
-	int32_t *nThreads);
+	int32_t *nThreads, int32_t *tiffFlag);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -34,9 +34,10 @@ int main(int argc, char *argv[])
 	int32_t hanningFlag, legacyFlag, gaussFlag, byteOrder;
 	int32_t checkAzFocus;
 	int32_t nThreads;
+	int32_t tiffFlag;
 	stateV sv1, sv2;
 	GDALDatasetH hDS1, hDS2;
-	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries, &byteOrder, &checkAzFocus, &nThreads);
+	readArgs(argc, argv, &parFile, &noComplex, &floatFlag, &hanningFlag, &legacyFlag, &gaussFlag, &maxTries, &byteOrder, &checkAzFocus, &nThreads, &tiffFlag);
 	if (nThreads > 0) {
 		omp_set_num_threads(nThreads);
 		fprintf(stderr, "\033[1;3;34mompThreads set to %d\033[0m\n", nThreads);
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
 	trackPar.maxTries = maxTries;
 	trackPar.byteOrder = byteOrder;
 	trackPar.checkAzFocus = checkAzFocus;
+	trackPar.tiffFlag = tiffFlag;
 	trackPar.azDefocusThresh = 1.8; // Default threshold
 	fprintf(stderr,"Byte order %i  [LSB %i, MSB %i]\n", trackPar.byteOrder, LSB, MSB);
 	fprintf(stderr, "maxTries = %i\n", maxTries);
@@ -146,7 +148,7 @@ int main(int argc, char *argv[])
 static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComplex,
 					 int32_t *floatFlag, int32_t *hanningFlag, int32_t *legacyFlag,
 					 int32_t *gaussFlag, int32_t *maxTries, int *byteOrder, int32_t *checkAzFocus,
-					 int32_t *nThreads)
+					 int32_t *nThreads, int32_t *tiffFlag)
 {
 	int32_t n, i;
 	char *argString;
@@ -163,6 +165,7 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 	*maxTries = 2;
 	*checkAzFocus = FALSE;
 	*nThreads = 2;
+	*tiffFlag = FALSE;
 	for (i = 1; i <= n; i++)
 	{
 		argString = strchr(argv[i], '-');
@@ -182,6 +185,8 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 			*byteOrder = LSB;
 		else if (strstr(argString, "checkAzFocus") != NULL)
 			*checkAzFocus = TRUE;
+		else if (strstr(argString, "tiff") != NULL)
+			*tiffFlag = TRUE;
 		else if (strstr(argString, "ompThreads") != NULL)
 		{
 			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '\0')
@@ -198,5 +203,5 @@ static void readArgs(int32_t argc, char *argv[], char **parFile, int32_t *noComp
 
 static void usage()
 {
-	error("sTrack -noComplex -singleAmp -gauss -integerComplex -noHanning -checkAzFocus -LSB parFile \n\tLSB  use LSB for both output and floating point input\n ");
+	error("sTrack -noComplex -singleAmp -gauss -integerComplex -noHanning -checkAzFocus -LSB -tiff parFile \n\tLSB  use LSB for both output and floating point input\n\ttiff write outputs as GeoTIFF wrapped by the VRT\n ");
 }

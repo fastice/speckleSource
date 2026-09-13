@@ -7,7 +7,7 @@
 #include <omp.h>
 
 double SLat = -91.;
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads);
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads, int32_t *tiffFlag);
 static void usage();
 /*
    Global variables definitions (NOT USED, NEED FOR LINKING ERS CODE
@@ -32,11 +32,12 @@ int main(int argc, char *argv[])
 	int32_t noComplex;
 	int32_t floatFlag;
 	int32_t nThreads;
+	int32_t tiffFlag;
 	stateV sv1, sv2;
 	int32_t byteOrder;
 	GDALDatasetH hDS1, hDS2;
 	GDALAllRegister();
-	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder, &nThreads);
+	readArgs(argc, argv, &parFile, &floatFlag, &byteOrder, &nThreads, &tiffFlag);
 	if (nThreads > 0) {
 		omp_set_num_threads(nThreads);
 		fprintf(stderr, "\033[1;3;34mompThreads set to %d\033[0m\n", nThreads);
@@ -46,6 +47,7 @@ int main(int argc, char *argv[])
 	trackPar.floatFlag = floatFlag;
 	trackPar.noComplex = TRUE;
 	trackPar.byteOrder = byteOrder;
+	trackPar.tiffFlag = tiffFlag;
 	fprintf(stderr, "Using: %s\n", parFile);
 	/*
 	  Parse command file
@@ -134,13 +136,14 @@ fprintf(stderr, "EdgePadR/A %i %i\n", trackPar.edgePadR, trackPar.edgePadA);
 	corrTrackFast(&trackPar);
 }
 
-static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads)
+static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag, int32_t *byteOrder, int32_t *nThreads, int32_t *tiffFlag)
 {
 	int32_t n, i;
 	char *argString;
 	*floatFlag = TRUE;
 	*byteOrder = MSB;
 	*nThreads = 2;
+	*tiffFlag = FALSE;
 	if (argc < 2)
 		usage();
 	*parFile = argv[argc - 1];
@@ -152,6 +155,8 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag,
 			*floatFlag = FALSE;
 		else if (strstr(argString, "LSB") != NULL)
 			*byteOrder = LSB;
+		else if (strstr(argString, "tiff") != NULL)
+			*tiffFlag = TRUE;
 		else if (strstr(argString, "ompThreads") != NULL)
 		{
 			if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '\0')
@@ -168,5 +173,5 @@ static void readArgs(int argc, char *argv[], char **parFile, int32_t *floatFlag,
 
 static void usage()
 {
-	error("strackw -integerComplex -LSB -ompThreads N parFile \n\tLSB  use LSB for both output and floating point input\n\tompThreads N  use N OpenMP threads (default 2)\n");
+	error("strackw -integerComplex -LSB -tiff -ompThreads N parFile \n\tLSB  use LSB for both output and floating point input\n\ttiff write outputs as GeoTIFF wrapped by the VRT\n\tompThreads N  use N OpenMP threads (default 2)\n");
 }
