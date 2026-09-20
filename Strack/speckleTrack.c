@@ -931,6 +931,12 @@ static void findImage2Pos(int32_t r1, int32_t a1, TrackParams *trackPar, int32_t
 			haveShift = TRUE;
 		} else {
 			// Added 2/18/26 since polynomial fit not read if 2D offset field supplied.
+			// No initial shift here, so no position: -1 makes the caller treat the
+			// column like a masked one. Leaving *a2 unset let the stale array slot
+			// (0 from malloc) anchor the imageBuf2 pre-load at line 0 on every row,
+			// forcing two 275 MB reloads per row, and matched the column at line 0.
+			*r2 = -1;
+			*a2 = -1;
 			return;
 		} 
 	}

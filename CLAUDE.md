@@ -62,8 +62,14 @@ were removed: created, never executed.
   Image line buffers (`imageBuf1`/`imageBuf2`) are shared singletons — safe because all j for a
   given i share the same azimuth position.
   - **a2 pre-load pattern**: before each j-loop, `imageBuf2` is anchored at the minimum valid a2
-    across the row by probing j=0/center/last via `findImage2Pos`, discarding out-of-range probes
-    and clamping to `[0, nSlpA2-1]`. This avoids buffer ping-pong when threads span a wide a2
+    across the row (serial precompute of `findImage2Pos` for every j into `a2_arr`, -1 = masked),
+    clamped to `[0, nSlpA2-1]`. **`findImage2Pos` must always set `*r2`/`*a2`.** Its no-initial-shift
+    branch (the "2/18/26" early return) used to leave them unset; the `malloc`'d slot then held 0, so
+    `a2_min` was 0 on 95 of 114 sTrackTest rows and the pre-load anchored at line 0 every row -
+    two 275 MB reloads per row (14 GB of the 28 GB strack read), and those columns were matched at
+    line 0 (all 6804 `nFl` failures on that case). It now returns -1 so the column is skipped like
+    a masked one. Fixed 2026-09-20: 43.6 -> 34.0 s single-threaded, output byte-identical.
+    strackw's own `findImage2Pos` falls back to the polynomial and was never affected. This avoids buffer ping-pong when threads span a wide a2
     range. `updateSLCBuffer`/`updateSLCBufferVRT` have an early-return guard for `a1` out of
     `[0, nSlpA)`. Any reload still occurring inside the parallel section is protected by
     `#pragma omp critical(imagebuf_reload[_w])`.
