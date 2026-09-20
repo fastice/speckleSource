@@ -7,7 +7,7 @@ $(shell mkdir -p $(OBJDIR))
 
 CFLAGS =	$(FLAGS) -c -I$(INCLUDEPATH) -D_LARGEFILE64_SOURCE -D_FILE64 -D_LARGEFILE_SOURCE -DHPLARGEFILES -MMD -MP -fopenmp
 
-SRCS =	strack.c parseTrack.c parseBase.c parseInitialOffsets.c speckleTrack.c \
+SRCS =	strack.c strackFFT.c parseTrack.c parseBase.c parseInitialOffsets.c speckleTrack.c \
 	sTrackOut.c getInt.c getMask.c parsePar.c writeVrt.c readBothOffsetsStrack.c dopplerEstimation.c \
 	mallocPerThreadArrays.c
 

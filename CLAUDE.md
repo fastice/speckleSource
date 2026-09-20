@@ -17,6 +17,41 @@ Each has its own `make <target>` rule in `speckleSource/Makefile` (run from `spe
 
 `make all` builds `strack strackw cullst cullls`.
 
+## FFTW 3 with wisdom (strack, strackw)
+
+Both trackers use system FFTW 3 (`-lfftw3f`) through `Strack/strackFFT.[ch]`; the bundled
+`fft/fftw-2.1.5` is no longer linked by anything in GIT64 (only `fft/bench` still builds
+against it, for timing comparisons). Measured on the `sTrackTest` case: 160 -> 124 s for the
+full pass and 28 -> 22 s for the registration pass, single thread; the FFT share of strack's
+runtime is modest when the complex match succeeds, so program-level gains are well below the
+~3x seen on the transforms themselves.
+
+**Keep the struct complex type.** The code accesses `.re`/`.im` at ~250 sites, so `fftw_complex`
+stays a `struct {float re, im;}` (layout-identical to `fftwf_complex`) and is cast at the plan/
+execute calls in `strackFFT.c` - the only file that includes `fftw3.h`, because that header
+defines a clashing (double) `fftw_complex`. Do not include `fftw3.h` anywhere else.
+
+**Every complex array that reaches a transform must come from `strackMallocComplex()`** and be
+released with `strackFreeComplex()`. `fftwf_execute_dft()` is only valid on arrays whose
+alignment matches the planning arrays; a plain `malloc` gives no such guarantee. `allocCMat`
+in both `mallocPerThreadArrays*.c`, `mallocfftw_complexMat`, and `getInt.c` were converted.
+
+**Plans are shared, execution is per thread.** `strackPlan2d()` serialises plan creation in
+`#pragma omp critical(strackFftPlanner)` - the FFTW planner is not thread safe - and the
+trackers execute with `strackExec2d()` (= `fftwf_execute_dft`), which is. Plans are looked up
+in wisdom with `FFTW_PATIENT | FFTW_WISDOM_ONLY` and only searched (PATIENT, seconds per size)
+when the file does not cover them; the file is `$STRACK_WISDOM`, else
+`$HOME/.strackWisdom.<hostname>`, per host because `$HOME` is shared and two hosts would
+otherwise overwrite each other's plans. It self-extends when a par file brings a new window
+size. Seed it once, quietly, before a bulk campaign; the first run that searches is the one
+whose offsets can differ in the last bit.
+
+Old vs new on `sTrackTest` at 1 thread: `dr`/`da` identical at all but 17 of 180662 points,
+each differing by exactly one oversample bin (1/24 px); `cc` differs at the last float bit;
+`mt` identical; run-to-run with wisdom replayed is bit-identical. The pre-existing 1-vs-4-thread
+race (1-2 cells) is unchanged. The four `onedForward*` 1-D plans and `intDat.forward/backward`
+were removed: created, never executed.
+
 ## Notes
 
 - **OpenMP** — `strack`, `strackw`, and `cullst` all support `-ompThreads N` (strack/cullst

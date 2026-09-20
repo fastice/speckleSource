@@ -212,7 +212,8 @@ all: $(TARGETS)
 #*********************************************strack **************************************************************
 #******************************************************************************************************************
 
-STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
+STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/strackFFT.o \
+		Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseInitialOffsets.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/speckleTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/sTrackOut.o \
@@ -225,7 +226,7 @@ STRACK  =	Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/dopplerEstimation.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/mallocPerThreadArrays.o
 
-STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common $(FFTHOME) \
+STRACKDIRS =	Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common \
 	$(PROGDIR)/rdfSource/rdfRoutines
 
 strack:
@@ -236,14 +237,15 @@ strack:
 			cd $(PROGDIR); \
 		); done
 		g++ $(MEM) $(CCFLAGS1) -fopenmp $(NOPIE) \
-                Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) $(FFT) $(COMMON) $(GDALIO) \
+                Strack/$(MACHTYPE)-$(OSTYPE)/strack.o $(STRACK)  $(STANDARD) $(RECIPES)  $(RDF) -lfftw3f $(COMMON) $(GDALIO) \
                 -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strack
 
 #******************************************************************************************************************
 #*********************************************strackw **************************************************************
 #******************************************************************************************************************
 
-STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
+STRACKW	=	Strack/$(MACHTYPE)-$(OSTYPE)/strackFFT.o \
+		Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
 		Strackw/$(MACHTYPE)-$(OSTYPE)/mallocPerThreadArraysW.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseTrack.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parseInitialOffsets.o \
@@ -255,7 +257,7 @@ STRACKW	=	Strackw/$(MACHTYPE)-$(OSTYPE)/corrTrackFast.o \
 		Strack/$(MACHTYPE)-$(OSTYPE)/parsePar.o
 		
 
-STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common $(FFTHOME) \
+STRACKWDIRS =	Strackw Strack $(PROGDIR)/rdfSource/rdfRoutines $(PROGDIR)/gdalIO/gdalIO $(PROGDIR)/clib $(PROGDIR)/cRecipes $(PROGDIR)/mosaicSource/common \
 	$(PROGDIR)/rdfSource/rdfRoutines
 
 strackw:
@@ -266,7 +268,7 @@ strackw:
 			cd $(PROGDIR); \
 		); done
 		g++ $(MEM)   $(CCFLAGS1) -fopenmp $(NOPIE) \
-		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) $(FFT)  $(COMMON) $(GDALIO) \
+		Strackw/$(MACHTYPE)-$(OSTYPE)/strackw.o $(STRACKW) $(STANDARD) $(RECIPES) $(RDF) -lfftw3f  $(COMMON) $(GDALIO) \
             -lm $(LDFLAGS)  $(GDAL) -o $(BINDIR)/strackw
 
 

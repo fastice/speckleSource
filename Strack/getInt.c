@@ -34,7 +34,7 @@ void getInt(TrackParams *trackPar)
 	inBuf = (strackComplex *)malloc(trackPar->intDat.nr * sizeof(strackComplex));
 	trackPar->intDat.intf = (fftw_complex **)malloc(trackPar->intDat.na * sizeof(fftw_complex *));
 	bufSize = (int32_t)trackPar->intDat.na * (int32_t)trackPar->intDat.nr * (int32_t)sizeof(fftw_complex);
-	buf = (fftw_complex *)malloc(bufSize);
+	buf = (fftw_complex *)strackMallocComplex(bufSize / sizeof(fftw_complex));
 	if (buf == NULL)
 	{
 		fprintf(stderr, "Cannot malloc interferogram buffer, proceeding with no interferogram\n");

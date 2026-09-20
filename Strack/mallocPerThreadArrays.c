@@ -87,7 +87,7 @@ extern fftwnd_plan tp_intForward, tp_intBackward;
 static fftw_complex **allocCMat(int32_t nA, int32_t nR)
 {
     int32_t i;
-    fftw_complex *data = malloc((size_t)nA * nR * sizeof(fftw_complex));
+    fftw_complex *data = strackMallocComplex((size_t)nA * nR);
     fftw_complex **rows = malloc((size_t)nA * sizeof(fftw_complex *));
     if (!data || !rows)
         error("mallocPerThreadArrays: out of memory");
@@ -108,7 +108,7 @@ static float **allocFMat(int32_t nA, int32_t nR)
     return rows;
 }
 
-static void freeMC(fftw_complex **m) { if (m) { free(m[0]); free(m); } }
+static void freeMC(fftw_complex **m) { if (m) { strackFreeComplex(m[0]); free(m); } }
 static void freeMF(float **m)        { if (m) { free(m[0]); free(m); } }
 
 /* ------------------------------------------------------------------ */
@@ -187,23 +187,23 @@ void mallocPerThreadArrays(TrackParams *trackPar)
      * (it touches global wisdom state), so serialise with a critical section. */
 #pragma omp critical(fftw_plan_create)
     {
-        cForwardIn    = fftw2d_create_plan(wA,                 wR,                 FFTW_FORWARD,  FFTW_ESTIMATE);
-        aForward      = fftw2d_create_plan(wAa * TP_OS,        wRa * TP_OS,        FFTW_FORWARD,  FFTW_ESTIMATE);
-        aForwardL     = fftw2d_create_plan(wAa * TP_LA * TP_OS,wRa * TP_LA * TP_OS,FFTW_FORWARD, FFTW_ESTIMATE);
-        aReverseNoPad = fftw2d_create_plan(wAa * TP_OS,        wRa * TP_OS,        FFTW_BACKWARD, FFTW_ESTIMATE);
-        aReverseNoPadL= fftw2d_create_plan(wAa * TP_LA * TP_OS,wRa * TP_LA * TP_OS,FFTW_BACKWARD,FFTW_ESTIMATE);
-        aForwardIn    = fftw2d_create_plan(wAa,                wRa,                FFTW_FORWARD,  FFTW_ESTIMATE);
-        aForwardInL   = fftw2d_create_plan(wAa * TP_LA,        wRa * TP_LA,        FFTW_FORWARD,  FFTW_ESTIMATE);
-        tp_cReverseNoPad = fftw2d_create_plan(wA * TP_OSA,     wR * TP_OSA,        FFTW_BACKWARD, FFTW_ESTIMATE);
-        tp_cForwardFast  = fftw2d_create_plan(TP_NFAST,        TP_NFAST,           FFTW_FORWARD,  FFTW_ESTIMATE);
-        tp_cReverseFast  = fftw2d_create_plan(TP_NOVER*TP_NFAST,TP_NOVER*TP_NFAST, FFTW_BACKWARD, FFTW_ESTIMATE);
+        cForwardIn    = strackPlan2d(wA, wR, FFTW_FORWARD);
+        aForward      = strackPlan2d(wAa * TP_OS, wRa * TP_OS, FFTW_FORWARD);
+        aForwardL     = strackPlan2d(wAa * TP_LA * TP_OS, wRa * TP_LA * TP_OS, FFTW_FORWARD);
+        aReverseNoPad = strackPlan2d(wAa * TP_OS, wRa * TP_OS, FFTW_BACKWARD);
+        aReverseNoPadL= strackPlan2d(wAa * TP_LA * TP_OS, wRa * TP_LA * TP_OS, FFTW_BACKWARD);
+        aForwardIn    = strackPlan2d(wAa, wRa, FFTW_FORWARD);
+        aForwardInL   = strackPlan2d(wAa * TP_LA, wRa * TP_LA, FFTW_FORWARD);
+        tp_cReverseNoPad = strackPlan2d(wA * TP_OSA, wR * TP_OSA, FFTW_BACKWARD);
+        tp_cForwardFast  = strackPlan2d(TP_NFAST, TP_NFAST, FFTW_FORWARD);
+        tp_cReverseFast  = strackPlan2d(TP_NOVER*TP_NFAST, TP_NOVER*TP_NFAST, FFTW_BACKWARD);
         if (trackPar->intFlag == TRUE) {
             int32_t ps  = trackPar->intDat.patchSize;
             int32_t nal = trackPar->intDat.nal;
             int32_t nrl = trackPar->intDat.nrl;
             int32_t osF = trackPar->osF;
-            tp_intForward  = fftw2d_create_plan(ps,           ps,           FFTW_FORWARD,  FFTW_ESTIMATE);
-            tp_intBackward = fftw2d_create_plan(ps * nal * osF, ps * nrl * osF, FFTW_BACKWARD, FFTW_ESTIMATE);
+            tp_intForward  = strackPlan2d(ps, ps, FFTW_FORWARD);
+            tp_intBackward = strackPlan2d(ps * nal * osF, ps * nrl * osF, FFTW_BACKWARD);
         } else {
             tp_intForward = tp_intBackward = NULL;
         }
@@ -234,13 +234,13 @@ void freePerThreadArrays(void)
     freeMF(cFastOverMag); freeMF(c);
     freeMC(intPatch);     freeMC(fftIntPatch);
     freeMC(intPatchOver); freeMC(fftIntPatchOver);
-    fftwnd_destroy_plan(cForwardIn);
-    fftwnd_destroy_plan(aForward);      fftwnd_destroy_plan(aForwardL);
-    fftwnd_destroy_plan(aReverseNoPad); fftwnd_destroy_plan(aReverseNoPadL);
-    fftwnd_destroy_plan(aForwardIn);    fftwnd_destroy_plan(aForwardInL);
-    fftwnd_destroy_plan(tp_cReverseNoPad);
-    fftwnd_destroy_plan(tp_cForwardFast);
-    fftwnd_destroy_plan(tp_cReverseFast);
-    if (tp_intForward)  fftwnd_destroy_plan(tp_intForward);
-    if (tp_intBackward) fftwnd_destroy_plan(tp_intBackward);
+    strackDestroyPlan(cForwardIn);
+    strackDestroyPlan(aForward);      strackDestroyPlan(aForwardL);
+    strackDestroyPlan(aReverseNoPad); strackDestroyPlan(aReverseNoPadL);
+    strackDestroyPlan(aForwardIn);    strackDestroyPlan(aForwardInL);
+    strackDestroyPlan(tp_cReverseNoPad);
+    strackDestroyPlan(tp_cForwardFast);
+    strackDestroyPlan(tp_cReverseFast);
+    if (tp_intForward)  strackDestroyPlan(tp_intForward);
+    if (tp_intBackward) strackDestroyPlan(tp_intBackward);
 }

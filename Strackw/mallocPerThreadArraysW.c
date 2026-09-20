@@ -56,7 +56,7 @@ extern fftwnd_plan tp_cForwardFast_w, tp_cReverseFast_w;
 static fftw_complex **allocCMat(int32_t nA, int32_t nR)
 {
     int32_t i;
-    fftw_complex *data = malloc((size_t)nA * nR * sizeof(fftw_complex));
+    fftw_complex *data = strackMallocComplex((size_t)nA * nR);
     fftw_complex **rows = malloc((size_t)nA * sizeof(fftw_complex *));
     if (!data || !rows)
         error("mallocPerThreadArraysW: out of memory");
@@ -89,7 +89,7 @@ static double **allocDMat(int32_t nA, int32_t nR)
     return rows;
 }
 
-static void freeMC(fftw_complex **m) { if (m) { free(m[0]); free(m); } }
+static void freeMC(fftw_complex **m) { if (m) { strackFreeComplex(m[0]); free(m); } }
 static void freeMF(float **m)        { if (m) { free(m[0]); free(m); } }
 static void freeMD(double **m)       { if (m) { free(m[0]); free(m); } }
 
@@ -141,17 +141,11 @@ void mallocPerThreadArraysW(TrackParams *trackPar)
     /* FFTW plan creation is not thread-safe; serialise with a critical section. */
 #pragma omp critical(fftw_plan_create)
     {
-        aForward      = fftw2d_create_plan(wAa * TP_OS, wRa * TP_OS,
-                                           FFTW_FORWARD,  FFTW_ESTIMATE);
-        aReverseNoPad = fftw2d_create_plan(wAa * TP_OS, wRa * TP_OS,
-                                           FFTW_BACKWARD, FFTW_ESTIMATE);
-        aForwardIn    = fftw2d_create_plan(wAa, wRa,
-                                           FFTW_FORWARD,  FFTW_ESTIMATE);
-        tp_cForwardFast_w = fftw2d_create_plan(TP_NFAST + 1, TP_NFAST + 1,
-                                               FFTW_FORWARD,  FFTW_ESTIMATE);
-        tp_cReverseFast_w = fftw2d_create_plan(TP_NOVER * (TP_NFAST + 1),
-                                               TP_NOVER * (TP_NFAST + 1),
-                                               FFTW_BACKWARD, FFTW_ESTIMATE);
+        aForward      = strackPlan2d(wAa * TP_OS, wRa * TP_OS, FFTW_FORWARD);
+        aReverseNoPad = strackPlan2d(wAa * TP_OS, wRa * TP_OS, FFTW_BACKWARD);
+        aForwardIn    = strackPlan2d(wAa, wRa, FFTW_FORWARD);
+        tp_cForwardFast_w = strackPlan2d(TP_NFAST + 1, TP_NFAST + 1, FFTW_FORWARD);
+        tp_cReverseFast_w = strackPlan2d(TP_NOVER * (TP_NFAST + 1), TP_NOVER * (TP_NFAST + 1), FFTW_BACKWARD);
     }
 }
 
@@ -167,9 +161,9 @@ void freePerThreadArraysW(void)
     freeMD(meanS);     freeMD(sigmaS);    freeMD(corrResult);
     freeMF(dataS);     freeMF(dataR);
     freeMD(tmpS1w);    freeMD(tmpS2w);
-    fftwnd_destroy_plan(aForward);
-    fftwnd_destroy_plan(aReverseNoPad);
-    fftwnd_destroy_plan(aForwardIn);
-    fftwnd_destroy_plan(tp_cForwardFast_w);
-    fftwnd_destroy_plan(tp_cReverseFast_w);
+    strackDestroyPlan(aForward);
+    strackDestroyPlan(aReverseNoPad);
+    strackDestroyPlan(aForwardIn);
+    strackDestroyPlan(tp_cForwardFast_w);
+    strackDestroyPlan(tp_cReverseFast_w);
 }

@@ -15,7 +15,6 @@
 #define AMPMATCH 2
 #define NBUFFERLINES 2000
 #define OS 2 /* Amplitude oversample factor */
-#define FFTWPLANMODE FFTW_ESTIMATE
 static void correlateFast(TrackParams *trackPar, double **tmpS1, double **tmpS2, float *rShift, float *aShift, float *cMax);
 static int32_t corrMatch(TrackParams *trackPar, double **tmpS1, double **tmpS2, int32_t i, int32_t j, float rShift, float aShift, float *cMax);
 static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FILE *fp1, FILE *fp2, TrackParams *trackPar, int32_t large);
@@ -398,13 +397,13 @@ static int32_t getCorrPatchesFast(int32_t r1, int32_t a1, int32_t r2, int32_t a2
 	getComplexData(a1, a2, r1, r2, img1in, img2in, trackPar);
 	tp_azShift_w = estDopCarrier1(trackPar, img1in, img2in, wAa, wRa);
 	// Forward FFT 
-	fftwnd_one(aForwardIn, img1in[0], fftFa1os[0]);
-	fftwnd_one(aForwardIn, img2in[0], fftFa2os[0]);
+	strackExec2d(aForwardIn, img1in[0], fftFa1os[0]);
+	strackExec2d(aForwardIn, img2in[0], fftFa2os[0]);
 	// Zero pad fft for over sampling
 	zeroPad(fftFa1os, fftFa2os, fftFa1, fftFa2, trackPar);
 	// Inverse transform
-	fftwnd_one(aReverseNoPad, fftFa1[0], img1[0]);
-	fftwnd_one(aReverseNoPad, fftFa2[0], img2[0]);
+	strackExec2d(aReverseNoPad, fftFa1[0], img1[0]);
+	strackExec2d(aReverseNoPad, fftFa2[0], img2[0]);
 	//  Detect Data , Note the image patches are double bookkept as im1/im2 and dataR, dataS
 	//  based on the way the program was kluged together
 	// Smaller patch
@@ -986,8 +985,8 @@ static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	wA = trackPar->wAa;
 	wR = trackPar->wRa;
 	// Step 1: FFT images  for cross-power spectrum
-	fftwnd_one(aForward, img1[0], fftFa1[0]);
-	fftwnd_one(aForward, img2[0], fftFa2[0]);
+	strackExec2d(aForward, img1[0], fftFa1[0]);
+	strackExec2d(aForward, img2[0], fftFa2[0]);
 	// Step 2: Compute zero padded power spectrum
 	i1 = 0;
 	for (i = 0; i < wA * OS; i++)
@@ -1000,7 +999,7 @@ static void ampMatchEdge(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 		i1++;
 	} /* End for i */
 	// Step 3: Inverse transform to get convolved image patches
-	fftwnd_one(aReverseNoPad, psAmpNoPad[0], caNoPad[0]);
+	strackExec2d(aReverseNoPad, psAmpNoPad[0], caNoPad[0]);
 	// Step 4: Unscramble result
 	for (i = 0; i < wA * OS / 2; i++)
 	{
@@ -1028,7 +1027,7 @@ static void overSampleC(TrackParams *trackPar)
 	int32_t i1, i2, j1, j2;
 	int32_t half;
 	half = NFAST/2;
-	fftwnd_one(tp_cForwardFast_w, cFast[0], psFast[0]);
+	strackExec2d(tp_cForwardFast_w, cFast[0], psFast[0]);
 	//  Zero pad fft for over sampling
 	for (i = 0; i <= half; i++)
 	{
@@ -1058,7 +1057,7 @@ static void overSampleC(TrackParams *trackPar)
 			j2++;
 		} /* End for j */
 	} /* End for i */
-	fftwnd_one(tp_cReverseFast_w, psFastOver[0], cFastOver[0]);
+	strackExec2d(tp_cReverseFast_w, psFastOver[0], cFastOver[0]);
 }
 
 // FFTW plan sizes (plans themselves are created per-thread in mallocPerThreadArraysW)
@@ -1219,7 +1218,7 @@ static fftw_complex **mallocfftw_complexMat(int32_t nA, int32_t nR)
 {
 	fftw_complex *tmp, **tmp1;
 	int32_t i;
-	tmp = malloc(nA * nR * sizeof(fftw_complex));
+	tmp = strackMallocComplex((size_t)nA * (size_t)nR);
 	tmp1 = (fftw_complex **)malloc(nA * sizeof(fftw_complex *));
 	for (i = 0; i < nA; i++)
 		tmp1[i] = &(tmp[i * nR]);

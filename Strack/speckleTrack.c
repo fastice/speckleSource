@@ -23,7 +23,6 @@
 #define AMPMATCH 2
 #define AMPMATCHLARGE 3
 #define NBUFFERLINES 1000
-#define FFTWPLANMODE FFTW_ESTIMATE
 #define OS 2 /* Over sample factor for cmpx match */
 #define OSA 2 /* Amplitude oversample factor */
 #define AZ 1
@@ -473,7 +472,7 @@ static int32_t complexMatch(TrackParams *trackPar, int32_t r1, int32_t a1, int32
 	/* Oversample peak; with oversamping or gaussian */
 	if (trackPar->gaussFlag == TRUE)
 	{
-		fftwnd_one(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
+		strackExec2d(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
 		findCPeak(cNoPadMag, cNoPad, trackPar->wR * OS, trackPar->wA * OS, iMax, jMax, cMax);
 		cmpTrackGauss(trackPar, iMax, jMax, cMax, trackPar->wR, trackPar->wA, cNoPadMag, tp_p1, tp_p2, TRUE, 1);
 	}			
@@ -573,8 +572,8 @@ static void ampMatch(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, double
 	p1 = p1 / (double)(wA * OS * wR * OS);
 	p2 = p2 / (wA * OS * wR * OS);
 	/*  Step 3: FFT and power spectrum */
-	fftwnd_one(*aFor, im1[0], fa1[0]);
-	fftwnd_one(*aFor, im2[0], fa2[0]);
+	strackExec2d(*aFor, im1[0], fa1[0]);
+	strackExec2d(*aFor, im2[0], fa2[0]);
 	/*  Step 4:   Zero pad fft for over sampling */
 	i1 = 0;
 	for (i = 0; i < wA * OS; i++)
@@ -636,7 +635,7 @@ static void ampTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 		caNoP = caNoPad;
 	}
 	/* FFT to get correlation function	*/
-	fftwnd_one(*aReverseNP, psANoPad[0], caNoP[0]);
+	strackExec2d(*aReverseNP, psANoPad[0], caNoP[0]);
 	/* Find the peak */
 	findCPeak(caNoPadM, caNoP, wR * OSA, wA * OSA, iMax, jMax, cMax);
 	// 
@@ -720,8 +719,8 @@ static void cmpPSWithPad(TrackParams *trackPar)
 	fftw_complex zero = {0.0, 0.0};
 	int32_t i, j, i1, j1, i2, j2, ia, ja, j2a;
 	/*	  Compute forward fft's	*/
-	fftwnd_one(cForwardIn, patch1[0], fftF1os[0]);
-	fftwnd_one(cForwardIn, patch2[0], fftF2os[0]);
+	strackExec2d(cForwardIn, patch1[0], fftF1os[0]);
+	strackExec2d(cForwardIn, patch2[0], fftF2os[0]);
 	/* zero pad */
 	for (i = 0; i < trackPar->wA * OSA; i++)
 		for (j = 0; j < trackPar->wR * OSA; j++)
@@ -770,7 +769,7 @@ static void cmpTrackFast(TrackParams *trackPar, int32_t *iMax, int32_t *jMax, do
 	else
 		hanningCorrection = 1.0;
 	/*   FFT to get correlation function */
-	fftwnd_one(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
+	strackExec2d(tp_cReverseNoPad, psNoPad[0], cNoPad[0]);
 	/*  Find correlation peak */
 	*cMax = 0.;
 	findCPeak(cNoPadMag, cNoPad, trackPar->wR * OSA, trackPar->wA * OSA, iMax, jMax, cMax);
@@ -965,11 +964,11 @@ static void overSampleC(TrackParams *trackPar)
 	extern fftw_complex **cFast, **cFastOver;
 	int32_t i, j;
 	int32_t i1, i2, j1, j2;
-	fftwnd_one(tp_cForwardFast, cFast[0], psFast[0]);
+	strackExec2d(tp_cForwardFast, cFast[0], psFast[0]);
 	/* Zero pad fft for over sampling	*/
 	zeroPadFFT(psFastOver, NFAST * NOVER, NFAST * NOVER, psFast, NFAST, NFAST, 0, 0);
 	/* Inverse transform */
-	fftwnd_one(tp_cReverseFast, psFastOver[0], cFastOver[0]);
+	strackExec2d(tp_cReverseFast, psFastOver[0], cFastOver[0]);
 }
 
 /*
@@ -1053,7 +1052,7 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 				}
 			}
 			/* FFT PATCH */
-			fftwnd_one(tp_intForward, intPatch[0], fftIntPatch[0]);
+			strackExec2d(tp_intForward, intPatch[0], fftIntPatch[0]);
 			/* Find Peak in interferogram */
 			maxf = 0.;
 			for (i = 0; i < trackPar->intDat.patchSize; i++)
@@ -1079,7 +1078,7 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 			zeroPadFFT(fftIntPatchOver, patchSize * trackPar->intDat.nal * trackPar->osF,
 					   patchSize * trackPar->intDat.nrl * trackPar->osF, fftIntPatch, patchSize, patchSize, 0, 0);
 			/* Inverse transform */
-			fftwnd_one(tp_intBackward, fftIntPatchOver[0], intPatchOver[0]);
+			strackExec2d(tp_intBackward, fftIntPatchOver[0], intPatchOver[0]);
 			/* NOw do correction */
 			i1 = (patchSize * trackPar->intDat.nal * trackPar->osF) / 2 - trackPar->wA * trackPar->osF / 2;
 			for (i = 0; i < trackPar->wA * trackPar->osF; i++)
@@ -1237,13 +1236,13 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	/* Forward FFT */
 	if (large == FALSE)
 	{
-		fftwnd_one(aForwardIn, im1in[0], f1[0]);
-		fftwnd_one(aForwardIn, im2in[0], f2[0]);
+		strackExec2d(aForwardIn, im1in[0], f1[0]);
+		strackExec2d(aForwardIn, im2in[0], f2[0]);
 	}
 	else
 	{
-		fftwnd_one(aForwardInL, im1in[0], f1[0]);
-		fftwnd_one(aForwardInL, im2in[0], f2[0]);
+		strackExec2d(aForwardInL, im1in[0], f1[0]);
+		strackExec2d(aForwardInL, im2in[0], f2[0]);
 	}
 	azShift = 0;  // Default
 
@@ -1263,13 +1262,13 @@ static int32_t getAmpPatches(int32_t r1, int32_t a1, int32_t r2, int32_t a2, FIL
 	/* Inverse transform */
 	if (large == FALSE)
 	{
-		fftwnd_one(aReverseNoPad, f1a[0], im1[0]);
-		fftwnd_one(aReverseNoPad, f2a[0], im2[0]);
+		strackExec2d(aReverseNoPad, f1a[0], im1[0]);
+		strackExec2d(aReverseNoPad, f2a[0], im2[0]);
 	}
 	else
 	{
-		fftwnd_one(aReverseNoPadL, f1a[0], im1[0]);
-		fftwnd_one(aReverseNoPadL, f2a[0], im2[0]);
+		strackExec2d(aReverseNoPadL, f1a[0], im1[0]);
+		strackExec2d(aReverseNoPadL, f2a[0], im2[0]);
 	}
 	/*	  Detect Data 	*/
 	i1Sum = 0.0;
@@ -1624,50 +1623,31 @@ static void fftPlans(TrackParams *trackPar)
 	extern fftwnd_plan aReverseNoPad;
 	extern fftwnd_plan aReverseNoPadL;
 
-	trackPar->cForward = fftw2d_create_plan(trackPar->wA * OSA, trackPar->wR * OSA,
-											FFTW_FORWARD, FFTWPLANMODE);
-	cForwardIn = fftw2d_create_plan(trackPar->wA, trackPar->wR,
-									FFTW_FORWARD, FFTWPLANMODE);
+	trackPar->cForward = strackPlan2d(trackPar->wA * OSA, trackPar->wR * OSA, FFTW_FORWARD);
+	cForwardIn = strackPlan2d(trackPar->wA, trackPar->wR, FFTW_FORWARD);
 	fprintf(stderr, "1 %i %i\n", NFAST, NFAST);
 
-	trackPar->cForwardFast = fftw2d_create_plan(NFAST, NFAST,
-												FFTW_FORWARD, FFTWPLANMODE);
+	trackPar->cForwardFast = strackPlan2d(NFAST, NFAST, FFTW_FORWARD);
 	fprintf(stderr, "2 %i %i\n", trackPar->wA * OSA, trackPar->wR * OSA);
-	trackPar->cReverseNoPad = fftw2d_create_plan(trackPar->wA * OSA,
-												 trackPar->wR * OSA, FFTW_BACKWARD, FFTWPLANMODE);
+	trackPar->cReverseNoPad = strackPlan2d(trackPar->wA * OSA, trackPar->wR * OSA, FFTW_BACKWARD);
 	fprintf(stderr, "3 %i %i\n", NOVER * NFAST, NOVER * NFAST);
-	trackPar->cReverseFast = fftw2d_create_plan(NOVER * NFAST,
-												NOVER * NFAST, FFTW_BACKWARD, FFTWPLANMODE);
+	trackPar->cReverseFast = strackPlan2d(NOVER * NFAST, NOVER * NFAST, FFTW_BACKWARD);
 	fprintf(stderr, "4 %i\n", trackPar->wA);
-	trackPar->onedForward1 = fftw_create_plan_specific(trackPar->wA,
-													   FFTW_FORWARD, FFTWPLANMODE, patch1[0], trackPar->wR, f1[0], trackPar->wR);
-	trackPar->onedForward1R = fftw_create_plan_specific(trackPar->wR,
-														FFTW_FORWARD, FFTWPLANMODE, patch1[0], 1, f1[0], 1);
 	fprintf(stderr, "5 %i\n", trackPar->wA);
-	trackPar->onedForward2 = fftw_create_plan_specific(trackPar->wA,
-													   FFTW_FORWARD, FFTWPLANMODE, patch2[0], trackPar->wR, f2[0], trackPar->wR);
-	trackPar->onedForward2R = fftw_create_plan_specific(trackPar->wR,
-														FFTW_FORWARD, FFTWPLANMODE, patch2[0], 1, f2[0], 1);
 
 	fprintf(stderr, "6 %i %i\n", trackPar->wAa * OS, trackPar->wRa * OS);
-	aForward = fftw2d_create_plan(trackPar->wAa * OS, trackPar->wRa * OS,
-								  FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
+	aForward = strackPlan2d(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_FORWARD); /* ^^^ */
 	fprintf(stderr, "7 %i %i\n", trackPar->wAa * LA * OS, trackPar->wRa * LA * OS);
-	aForwardL = fftw2d_create_plan(trackPar->wAa * LA * OS, trackPar->wRa * LA * OS,
-								   FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
+	aForwardL = strackPlan2d(trackPar->wAa * LA * OS, trackPar->wRa * LA * OS, FFTW_FORWARD); /* ^^^ */
 	fprintf(stderr, "8 %i %i\n", trackPar->wAa * OS, trackPar->wRa * OS);
-	aReverseNoPad = fftw2d_create_plan(trackPar->wAa * OS,
-									   trackPar->wRa * OS, FFTW_BACKWARD, FFTWPLANMODE); /* ^^^ */
+	aReverseNoPad = strackPlan2d(trackPar->wAa * OS, trackPar->wRa * OS, FFTW_BACKWARD); /* ^^^ */
 	fprintf(stderr, "9 %i %i\n", trackPar->wAa * LA * OS, trackPar->wRa * LA * OS);
-	aReverseNoPadL = fftw2d_create_plan(trackPar->wAa * LA * OS,
-										trackPar->wRa * LA * OS, FFTW_BACKWARD, FFTWPLANMODE); /* ^^^ */
+	aReverseNoPadL = strackPlan2d(trackPar->wAa * LA * OS, trackPar->wRa * LA * OS, FFTW_BACKWARD); /* ^^^ */
 
 	fprintf(stderr, "10 %i %i\n", trackPar->wAa, trackPar->wRa);
-	aForwardIn = fftw2d_create_plan(trackPar->wAa, trackPar->wRa,
-									FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
+	aForwardIn = strackPlan2d(trackPar->wAa, trackPar->wRa, FFTW_FORWARD); /* ^^^ */
 	fprintf(stderr, "11 %i %i \n", trackPar->wAa * LA, trackPar->wRa * LA);
-	aForwardInL = fftw2d_create_plan(trackPar->wAa * LA, trackPar->wRa * LA,
-									 FFTW_FORWARD, FFTWPLANMODE); /* ^^^ */
+	aForwardInL = strackPlan2d(trackPar->wAa * LA, trackPar->wRa * LA, FFTW_FORWARD); /* ^^^ */
 }
 
 /*
@@ -1713,11 +1693,6 @@ static void initPhaseCorrect(TrackParams *trackPar)
 				intPatchOver[i][j].re = 0;
 				intPatchOver[i][j].im = 0;
 			}
-		trackPar->intDat.forward = fftw2d_create_plan(patchSize,
-													  patchSize, FFTW_FORWARD, FFTWPLANMODE);
-		trackPar->intDat.backward =
-			fftw2d_create_plan(patchSize * trackPar->intDat.nal * osF,
-							   trackPar->intDat.nrl * patchSize * osF, FFTW_BACKWARD, FFTWPLANMODE);
 	}
 	thetaD = (double *)malloc(sizeof(double) * nSamps * osF);
 	sinThetaD = (double *)malloc(sizeof(double) * nSamps * osF);
@@ -2110,7 +2085,7 @@ static fftw_complex **mallocfftw_complexMat(int32_t nA, int32_t nR)
 {
 	fftw_complex *tmp, **tmp1;
 	int32_t i;
-	tmp = malloc(nA * nR * sizeof(fftw_complex));
+	tmp = strackMallocComplex((size_t)nA * (size_t)nR);
 	tmp1 = (fftw_complex **)malloc(nA * sizeof(fftw_complex *));
 	for (i = 0; i < nA; i++)
 		tmp1[i] = &(tmp[i * nR]);

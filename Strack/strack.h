@@ -1,5 +1,5 @@
 #include "mosaicSource/common/common.h"
-#include "fft/fftw-2.1.5/fftw/fftw.h"
+#include "speckleSource/Strack/strackFFT.h"
 #include "gdalIO/gdalIO/grimpgdal.h"
 
 #define GEODATMASK 0
@@ -28,8 +28,6 @@ typedef struct
 	int32_t nrl;
 	int32_t nal;
 	int32_t patchSize;
-	fftwnd_plan forward;
-	fftwnd_plan backward;
 	fftw_complex **intf;
 } intData;
 
@@ -137,10 +135,6 @@ typedef struct
 	fftwnd_plan cForwardFast;
 	fftwnd_plan cReverseNoPad;
 	fftwnd_plan cReverseFast;
-	fftw_plan onedForward1;
-	fftw_plan onedForward2;
-	fftw_plan onedForward1R;
-	fftw_plan onedForward2R;
 	/* Results */
 	float **offR;
 	float **offA;
