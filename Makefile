@@ -66,7 +66,7 @@ C =		gcc
 #
 CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) '
-GDAL = -lgdal -lcurl  -lsqlite3 -llzma -lpoppler -lopenjp2 -lssh2 -llcms2
+GDAL = -lgdal -lproj -lcurl  -lsqlite3 -llzma -lpoppler -lopenjp2 -lssh2 -llcms2
 #
 CCFLAGS1= -O3 
 #-no-pie
@@ -77,13 +77,13 @@ CCFLAGS1= -O3
 #
 ifneq ("$(OSTYPE)", "Darwin")
 	NOPIE =	-no-pie
-	GDAL = -lgdal -lcurl  -lsqlite3 -llzma -lpoppler -lopenjp2 -lssh2 -llcms2
+	GDAL = -lgdal -lproj -lcurl  -lsqlite3 -llzma -lpoppler -lopenjp2 -lssh2 -llcms2
 	CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS)'
 	CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) '
 else
 	GDALLIB = /opt/homebrew/lib
 	GDALINCLUDE = /opt/homebrew/include
-	GDAL = -lgdal -L/opt/homebrew/lib
+	GDAL = -lgdal -lproj -L/opt/homebrew/lib
 	CFLAGS =	'-O3 $(MEM) -I$(INCLUDEPATH) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
 	CCFLAGS =  '-O3 $(MEM) $(COMPILEFLAGS) -I$(GDALINCLUDE)'
 endif
@@ -102,6 +102,7 @@ COMMON=	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/addIrregData.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeScale.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeTiePoints.o \
 	    	$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/computeXYangle.o \
+	    		$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/grimpProj.o \
 	        $(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/earthRadiusFunctions.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/geojsonCode.o \
 			$(PROGDIR)/mosaicSource/common/$(MACHTYPE)-$(OSTYPE)/getAzimuthBoundsForXYBox.o \
