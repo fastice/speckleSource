@@ -84,6 +84,9 @@ double timeIO=0.;
 
 int32_t tp_azShift_w;
 double **tmpS1w, **tmpS2w;
+/* Scratch for the separable boxcar in detectPatch */
+float **smoothRowW;
+float *powRowW;
 fftwnd_plan tp_cForwardFast_w, tp_cReverseFast_w;
 
 #pragma omp threadprivate(img1, img2, img1in, img2in, \
@@ -91,7 +94,7 @@ fftwnd_plan tp_cForwardFast_w, tp_cReverseFast_w;
     psAmpNoPad, caNoPad, caNoPadMag, \
     psFast, psFastOver, cFast, cFastOver, \
     meanS, sigmaS, corrResult, dataS, dataR, \
-    tmpS1w, tmpS2w, \
+    tmpS1w, tmpS2w, smoothRowW, powRowW, \
     aForward, aReverseNoPad, aForwardIn, \
     tp_cForwardFast_w, tp_cReverseFast_w, \
     tp_azShift_w)
@@ -857,24 +860,67 @@ static void detectPatch(float **data, fftw_complex **im, int32_t wR, int32_t wA,
 		for (j = 0; j < wR; j++)
 		{
 			j1 = edgePadR * OS + j;
-			// Smoothing
-			if (trackPar->navgA > 1 || trackPar->navgR > 1)
-			{
-				data[i][j] = 0;
-				for (m = -trackPar->navgA; m <= trackPar->navgA; m++)
-				{
-					k = min(max(i1 + m, 0), edgePadR * OS + wA + extraA - 1); /* Changed 11/12/08 data outside window */
-					for (n = -trackPar->navgR; n <= trackPar->navgR; n++)
-					{
-						/* fixed 11/12/08, changed from m to n */
-						l = min(max(j1 + n, 0), edgePadR * OS + wR + extraR - 1);
-						data[i][j] += (im[k][l].re * im[k][l].re + im[k][l].im * im[k][l].im) * scale;
-					}
-				}
-			}
-			else
+			if (!(trackPar->navgA > 1 || trackPar->navgR > 1))
 			{
 				data[i][j] = (im[i1][j1].re * im[i1][j1].re + im[i1][j1].im * im[i1][j1].im) * scale;
+			}
+		}
+	}
+	// Smoothing: a (2navgA+1) x (2navgR+1) boxcar of the detected power. Separable, so
+	// the power is formed once per sample and each axis summed once, instead of the
+	// full window being re-summed (and |im|^2 recomputed) at every output pixel. The
+	// window and edge clamping are exactly those of the original double loop,
+	// including its use of edgePadR in the azimuth limit (changed 11/12/08).
+	if (trackPar->navgA > 1 || trackPar->navgR > 1)
+	{
+		// Capped at the patch: where edgePadR > edgePadA the original limit ran past
+		// it and read outside im. Identical wherever the original stayed inside.
+		int32_t kMax = min(edgePadR * OS + wA + extraA - 1, trackPar->wAa * OS - 1);
+		int32_t lMax = min(edgePadR * OS + wR + extraR - 1, trackPar->wRa * OS - 1);
+		int32_t kLo = min(max(edgePadA * OS - trackPar->navgA, 0), kMax);
+		int32_t kHi = min(max(edgePadA * OS + wA - 1 + trackPar->navgA, 0), kMax);
+		int32_t l0 = edgePadR * OS - trackPar->navgR;   // range index of powRowW[0]
+		int32_t nExt = wR + 2 * trackPar->navgR;
+		int32_t t;
+		float *out;
+		// Range pass, for every azimuth row the window can touch. powRowW holds the
+		// power along the row already edge-clamped, so the sums below carry no index
+		// arithmetic and vectorise; per output the terms are still added in n order.
+		for (k = kLo; k <= kHi; k++)
+		{
+			for (t = 0; t < nExt; t++)
+			{
+				l = min(max(l0 + t, 0), lMax);
+				powRowW[t] = (im[k][l].re * im[k][l].re + im[k][l].im * im[k][l].im) * scale;
+			}
+			out = smoothRowW[k];
+			for (j = 0; j < wR; j++)
+			{
+				out[j] = 0;
+			}
+			for (n = 0; n <= 2 * trackPar->navgR; n++)
+			{
+				for (j = 0; j < wR; j++)
+				{
+					out[j] += powRowW[j + n];
+				}
+			}
+		}
+		// Azimuth pass
+		for (i = 0; i < wA; i++)
+		{
+			i1 = edgePadA * OS + i;
+			for (j = 0; j < wR; j++)
+			{
+				data[i][j] = 0;
+			}
+			for (m = -trackPar->navgA; m <= trackPar->navgA; m++)
+			{
+				k = min(max(i1 + m, 0), kMax);
+				for (j = 0; j < wR; j++)
+				{
+					data[i][j] += smoothRowW[k][j];
+				}
 			}
 		}
 	}

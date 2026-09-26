@@ -37,6 +37,8 @@ extern fftw_complex **cFast, **cFastOver;
 extern double **meanS, **sigmaS, **corrResult;
 extern float **dataS, **dataR;
 extern double **tmpS1w, **tmpS2w;
+extern float **smoothRowW;
+extern float *powRowW;
 extern fftwnd_plan aForward, aReverseNoPad, aForwardIn;
 extern fftwnd_plan tp_cForwardFast_w, tp_cReverseFast_w;
 
@@ -46,7 +48,7 @@ extern fftwnd_plan tp_cForwardFast_w, tp_cReverseFast_w;
     psAmpNoPad, caNoPad, caNoPadMag, \
     psFast, psFastOver, cFast, cFastOver, \
     meanS, sigmaS, corrResult, dataS, dataR, \
-    tmpS1w, tmpS2w, \
+    tmpS1w, tmpS2w, smoothRowW, powRowW, \
     aForward, aReverseNoPad, aForwardIn, \
     tp_cForwardFast_w, tp_cReverseFast_w)
 
@@ -137,6 +139,11 @@ void mallocPerThreadArraysW(TrackParams *trackPar)
     dataR      = allocFMat(wA2, wR2);
     tmpS1w     = allocDMat(wAa * TP_OS, wRa * TP_OS);
     tmpS2w     = allocDMat(wAa * TP_OS, wRa * TP_OS);
+    /* detectPatch boxcar scratch: every clamped index lies inside the patch */
+    smoothRowW = allocFMat(wAa * TP_OS, wRa * TP_OS);
+    powRowW    = malloc((size_t)(wRa * TP_OS + 2 * trackPar->navgR) * sizeof(float));
+    if (!powRowW)
+        error("mallocPerThreadArraysW: out of memory");
 
     /* FFTW plan creation is not thread-safe; serialise with a critical section. */
 #pragma omp critical(fftw_plan_create)
@@ -161,6 +168,7 @@ void freePerThreadArraysW(void)
     freeMD(meanS);     freeMD(sigmaS);    freeMD(corrResult);
     freeMF(dataS);     freeMF(dataR);
     freeMD(tmpS1w);    freeMD(tmpS2w);
+    freeMF(smoothRowW); free(powRowW);
     strackDestroyPlan(aForward);
     strackDestroyPlan(aReverseNoPad);
     strackDestroyPlan(aForwardIn);
