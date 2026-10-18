@@ -28,6 +28,11 @@ typedef struct
 	int32_t nrl;
 	int32_t nal;
 	int32_t patchSize;
+	/*  SLC pixel of interferogram sample (0,0).  Zero for a full-scene interferogram on the
+	    same grid as the SLC (the legacy case); non-zero when the interferogram has been
+	    cropped to an SLC subset, e.g. a NISAR RIFG cut to a downloaded RSLC window. */
+	int32_t r0;
+	int32_t a0;
 	fftw_complex **intf;
 } intData;
 

@@ -1043,8 +1043,11 @@ static void phaseCorrectInt(TrackParams *trackPar, int32_t r1, int32_t a1)
 	*/
 	if (trackPar->intFlag == TRUE)
 	{
-		ia1 = (a1 + trackPar->wA / 2) / trackPar->intDat.nal - trackPar->intDat.patchSize / 2;
-		ir1 = (r1 + trackPar->wR / 2) / trackPar->intDat.nrl - trackPar->intDat.patchSize / 2;
+		/*  intDat.a0/r0 are the SLC pixel of interferogram sample (0,0): zero for a full-scene
+		    interferogram on the SLC grid, non-zero when it has been cropped to an SLC subset.
+		    Without them a cropped interferogram is read at the wrong place entirely. */
+		ia1 = (a1 + trackPar->wA / 2 - trackPar->intDat.a0) / trackPar->intDat.nal - trackPar->intDat.patchSize / 2;
+		ir1 = (r1 + trackPar->wR / 2 - trackPar->intDat.r0) / trackPar->intDat.nrl - trackPar->intDat.patchSize / 2;
 
 		if (inBounds(ir1, ia1, patchSize, patchSize, trackPar->intDat.nr, trackPar->intDat.na))
 		{
