@@ -47,6 +47,8 @@ static void loadBuffer(StrackBuf *imageBuf1, SARData *imageP1, TrackParams *trac
 static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
                           SARData *imageP1, TrackParams *trackPar,
                           int32_t a1, int32_t wAa, size_t sSize);
+static int32_t fillRowBuffer(StrackBuf *buf, SARData *imageP, TrackParams *trackPar,
+                             GDALRasterBandH hBand, FILE *fp, int32_t lo, int32_t hi, size_t sSize);
 static void openStrackFiles(FILE **fpR, FILE **fpA, FILE **fpC,  FILE **fpAZD, FILE **fpT, FILE **fp1, FILE **fp2, TrackParams *trackPar);
 void printLineSummary(int32_t nTot, int32_t a1, double cAvg, double cAvgAmp, int32_t nMask, time_t lastTime,
 					  time_t startTime, TrackParams *trackPar);
@@ -202,6 +204,7 @@ void speckleTrack(TrackParams *trackPar)
 	int32_t nTot=0, nCorr, nSkip, patchFlag, ampType;
 	int32_t good, type, haveData, nMask=0, nAmpLine;
 	int32_t i, j, r1, a1, r2, a2;
+	int32_t loOff, hiOff, rowFits = TRUE, warnedSerial = FALSE;
 	int32_t r1a, a1a, r2a, a2a, jMax, iMax;
 	int32_t prevShift = -1, nTries, ampWScale, maskVal, large; /* Flag to determine whether to match */
 	fprintf(stderr, "\nSPECKLE TRACKING\n");
@@ -253,7 +256,7 @@ void speckleTrack(TrackParams *trackPar)
 		{
 			int32_t jj, r1j, anyMatch = 0, a2_preload;
 			int32_t nSlpA2 = trackPar->imageP2.nSlpA;
-			int32_t a2_min = nSlpA2;
+			int32_t a2_min = nSlpA2, a2_max = -1;
 			size_t sSizeC = (trackPar->floatFlag == TRUE) ?
 			                sizeof(fftw_complex) : sizeof(strackComplex);
 			for (jj = 0; jj < trackPar->nR; jj++) {
@@ -265,26 +268,45 @@ void speckleTrack(TrackParams *trackPar)
 				findImage2Pos(r1j, a1, trackPar, &r2_arr[jj], &a2_arr[jj]);
 				anyMatch = 1;
 				if (a2_arr[jj] >= 0 && a2_arr[jj] < nSlpA2)
+				{
 					a2_min = min(a2_min, a2_arr[jj]);
+					a2_max = max(a2_max, a2_arr[jj]);
+				}
 			}
 			if (!anyMatch) goto next_row;
 			a2_preload = max(0, min((a2_min < nSlpA2) ? a2_min : 0, nSlpA2 - 1));
-			if (trackPar->hBand1 == NULL)
-				loadBuffer(&imageBuf1, &(trackPar->imageP1), trackPar,
-				           a1, trackPar->wA, sSizeC, fp1);
-			else
-				loadBufferVRT(&imageBuf1, trackPar->hBand1,
-				              &(trackPar->imageP1), trackPar,
-				              a1, trackPar->wA, sSizeC);
-			if (trackPar->hBand2 == NULL)
-				loadBuffer(&imageBuf2, &(trackPar->imageP2), trackPar,
-				           a2_preload, trackPar->wA, sSizeC, fp2);
-			else
-				loadBufferVRT(&imageBuf2, trackPar->hBand2,
-				              &(trackPar->imageP2), trackPar,
-				              a2_preload, trackPar->wA, sSizeC);
+			if (a2_max < a2_preload)
+				a2_max = a2_preload;
+			/* Load every line the j-loop can read BEFORE it starts: a reload
+			   inside the parallel loop overwrites the buffer while other
+			   threads are reading it (segfault, 2026-10 TSX batch). Lines
+			   relative to a1 (a2 for image 2), with c = a1 + wA/2 the grid
+			   centre: complex [a1, a1+wA); amp try k (scale 1, then LA when
+			   maxTries > 1) [c - (wAa/2)k, +wAa*k). */
+			loOff = 0;
+			hiOff = trackPar->wA;
+			{
+				int32_t k, nScale = (trackPar->maxTries > 1) ? 2 : 1;
+				for (k = 0; k < nScale; k++)
+				{
+					int32_t sc = (k == 0) ? 1 : LA;
+					int32_t st = trackPar->wA / 2 - trackPar->wAa / 2 * sc;
+					loOff = min(loOff, st);
+					hiOff = max(hiOff, st + trackPar->wAa * sc);
+				}
+			}
+			rowFits = fillRowBuffer(&imageBuf1, &(trackPar->imageP1), trackPar,
+			                        trackPar->hBand1, fp1, a1 + loOff, a1 + hiOff, sSizeC) &&
+			          fillRowBuffer(&imageBuf2, &(trackPar->imageP2), trackPar,
+			                        trackPar->hBand2, fp2, a2_preload + loOff, a2_max + hiOff, sSizeC);
+			if (!rowFits && !warnedSerial)
+			{
+				/* should not happen; a serial row may reload safely */
+				fprintf(stderr, "\nwarning: row %d not fully buffered - running it serially\n", i);
+				warnedSerial = TRUE;
+			}
 		}
-#pragma omp parallel for schedule(dynamic, 4) \
+#pragma omp parallel for if(rowFits) schedule(dynamic, 4) \
     private(r1, r2, a2, haveData, cMax, type, good, nTries, \
             ampWScale, ampType, maskVal, large, cThresh, \
             rShift, aShift, rShift1, aShift1, rShiftAmp, aShiftAmp, \
@@ -351,7 +373,7 @@ void speckleTrack(TrackParams *trackPar)
 					ampType = AMPMATCHLARGE;
 					cThresh = 0.028;
 				}
-				computeAmpImageLocations(trackPar, i, j, &r1a, &a1a, &r2a, &a2a, rShiftAmp, aShiftAmp, trackPar->wA, trackPar->wR, ampWScale);
+				computeAmpImageLocations(trackPar, i, j, &r1a, &a1a, &r2a, &a2a, rShiftAmp, aShiftAmp, trackPar->wAa, trackPar->wRa, ampWScale);
 				if (boundsCheck(r1a, a1a, r2a, a2a, trackPar->wRa * ampWScale, trackPar->wAa * ampWScale, trackPar) && maskVal > 0)
 				{
 					haveData = getAmpPatches(r1a, a1a, r2a, a2a, fp1, fp2, trackPar, large);
@@ -1484,6 +1506,80 @@ static void loadBufferVRT(StrackBuf *imageBuf1, GDALRasterBandH hBand,
 		}
 		} /* end omp critical */
     }
+}
+
+/*
+  Serial (outside any parallel region) row pre-load: make the buffer hold lines
+  [lo, hi] (hi = last needed line + 1, matching loadBuffer's a + w <= lastRow
+  test), clamped to the image. Reads from lo, growing the buffer if the span is
+  longer than it. Returns TRUE if the buffer now covers the clamped span.
+*/
+static int32_t fillRowBuffer(StrackBuf *buf, SARData *imageP, TrackParams *trackPar,
+                             GDALRasterBandH hBand, FILE *fp, int32_t lo, int32_t hi, size_t sSize)
+{
+	int32_t nLines;
+	lo = max(0, lo);
+	hi = min(hi, imageP->nSlpA - 1);
+	if (lo > hi)
+	{
+		return (TRUE); /* nothing in the image to read for this row */
+	}
+	if (lo >= buf->firstRow && hi <= buf->lastRow)
+	{
+		return (TRUE);
+	}
+	if (hi - lo + 1 > buf->na)
+	{
+		/* grow: only ever called serially, so no reader can hold the old buffer */
+		int32_t newNa = hi - lo + 1;
+		if (trackPar->floatFlag == TRUE)
+		{
+			strackFreeComplex(buf->buf[0]);
+			free(buf->buf);
+			buf->buf = (void **)mallocfftw_complexMat(newNa, buf->nr);
+		}
+		else
+		{
+			free(buf->buf[0]);
+			free(buf->buf);
+			buf->buf = (void **)mallocErs1ComplexMat(newNa, buf->nr);
+		}
+		buf->na = newNa;
+		fprintf(stderr, "\nimage buffer grown to %d lines\n", newNa);
+	}
+	nLines = min(imageP->nSlpA - lo, buf->na);
+	if (hBand != NULL)
+	{
+		GDALDataType myType = (sSize == sizeof(fftw_complex)) ? GDT_CFloat32 : GDT_CInt16;
+		if (GDALRasterIO(hBand, GF_Read, 0, lo, imageP->nSlpR, nLines, buf->buf[0],
+						 imageP->nSlpR, nLines, myType, 0, 0) != CE_None)
+		{
+			fprintf(stderr, "Error reading VRT\n");
+			exit(1);
+		}
+	}
+	else
+	{
+		fseeko(fp, ((off_t)lo * imageP->nSlpR) * (off_t)sSize, SEEK_SET);
+		if (trackPar->floatFlag == TRUE)
+		{
+			if (trackPar->byteOrder == MSB)
+			{
+				freadBS((void *)buf->buf[0], sSize, (size_t)imageP->nSlpR * nLines, fp, FLOAT32FLAG);
+			}
+			else
+			{
+				(void)fread((void *)buf->buf[0], sSize, (size_t)imageP->nSlpR * nLines, fp);
+			}
+		}
+		else
+		{
+			freadBS((void *)buf->buf[0], sSize, (size_t)imageP->nSlpR * nLines, fp, INT16FLAG);
+		}
+	}
+	buf->firstRow = lo;
+	buf->lastRow = lo + nLines - 1;
+	return (lo >= buf->firstRow && hi <= buf->lastRow);
 }
 
 /*
